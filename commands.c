@@ -198,6 +198,10 @@ void * updateAstrometry() {
             printf("Did not solve or timeout of Astrometry properly, or did not"
                    " auto-focus properly.\n");
         }
+        printf("Sleeping between frames...\n");
+        int timeBetweenFramesSec = 1;
+        sleep(timeBetweenFramesSec);
+
     }
 
     // when we are shutting down or exiting, close Astrometry engine and solver

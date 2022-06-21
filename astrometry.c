@@ -13,8 +13,7 @@
 #include <astrometry/fileutils.h>
 #include <ueye.h>
 #include <sofa/sofa.h>
-#include "/home/xscblast/astrometry/blind/solver.c"
-#include "/home/xscblast/astrometry/blind/engine.c"
+#include <errno.h>
 
 #include "camera.h"
 #include "astrometry.h"
@@ -194,6 +193,11 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 
 	// solution status should be 0 since we have yet to achieve a solution 
 	sol_status = 0;
+	if ((fptr = fopen(datafile, "a")) == NULL) {
+		fprintf(stderr, "Could not open observing file: %s.\n", 
+				strerror(errno));
+		return sol_status;
+	}
 	if ((*solver).best_match_solves) {
 		double pscale;
 		tan_t * wcs;
@@ -274,13 +278,6 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		if (verbose) {
 			printf(" > Writing Astrometry solution to data file...\n");
 		}
-
-		if ((fptr = fopen(datafile, "a")) == NULL) {
-		    fprintf(stderr, "Could not open observing file: %s.\n", 
-					strerror(errno));
-		    return sol_status;
-		}
-
 
 		if (fprintf(fptr, "%i\t%lf\t%lf\t%lf\t%lf\t%.15f\t%.15f\t%lf\t%f", num_blobs, 
               			all_astro_params.ra, all_astro_params.dec, 
