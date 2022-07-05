@@ -1246,11 +1246,12 @@ int doCameraAndAstrometry() {
         }
 
         // clear previous contents of auto-focusing file (open in write mode)
-        strftime(af_filename, sizeof(af_filename), "/home/blast/Desktop/"
-                                                   "blastcam/auto_focus_"
-                                                   "starting_%Y-%m-%d_%H:%M:"
-                                                   "%S.txt", 
-                 tm_info);
+        strftime(
+            af_filename,
+            sizeof(af_filename),
+            "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H:%M:%S.txt",
+            tm_info
+        );
         if (verbose) {
             printf("Opening auto-focusing text file: %s\n", af_filename);
         }
