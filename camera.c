@@ -1143,39 +1143,39 @@ int doCameraAndAstrometry() {
         // write observing information to data file
         strftime(buff, sizeof(buff), "%B %d Observing Session - beginning "
                                      "%H:%M:%S GMT", tm_info); 
-        fprintf(fptr, "********************* %s *********************\n", buff);
-        fprintf(fptr, "Camera model: %s\n", sensorInfo.strSensorName);
-        fprintf(fptr, "----------------------------------------------------\n");
-        fprintf(fptr, "Exposure: %f milliseconds\n", curr_exposure);
-        fprintf(fptr, "Pixel clock: %i\n", curr_pc);
-        fprintf(fptr, "Frame rate achieved (desired is 10): %f\n", actual_fps);
-        fprintf(fptr, "Trigger delay (microseconds): %i\n", curr_trig_delay);
-        fprintf(fptr, "Current trigger mode setting: %i\n", curr_ext_trig);
-        fprintf(fptr, "Current trigger timeout: %i\n", curr_timeout);
-        fprintf(fptr, "Auto shutter: %.1f\n", curr_shutter);
-        fprintf(fptr, "Auto frame rate (should be disabled): %.1f\n", auto_fr);
-        fprintf(fptr, "----------------------------------------------------\n");
-        fprintf(fptr, "Sensor ID/type: %u\n", sensorInfo.SensorID);
-        fprintf(fptr, "Sensor color mode (from is_GetSensorInfo and "
+        fprintf(fptr, "# ********************* %s *********************\n", buff);
+        fprintf(fptr, "# Camera model: %s\n", sensorInfo.strSensorName);
+        fprintf(fptr, "# ----------------------------------------------------\n");
+        fprintf(fptr, "# Exposure: %f milliseconds\n", curr_exposure);
+        fprintf(fptr, "# Pixel clock: %i\n", curr_pc);
+        fprintf(fptr, "# Frame rate achieved (desired is 10): %f\n", actual_fps);
+        fprintf(fptr, "# Trigger delay (microseconds): %i\n", curr_trig_delay);
+        fprintf(fptr, "# Current trigger mode setting: %i\n", curr_ext_trig);
+        fprintf(fptr, "# Current trigger timeout: %i\n", curr_timeout);
+        fprintf(fptr, "# Auto shutter: %.1f\n", curr_shutter);
+        fprintf(fptr, "# Auto frame rate (should be disabled): %.1f\n", auto_fr);
+        fprintf(fptr, "# ----------------------------------------------------\n");
+        fprintf(fptr, "# Sensor ID/type: %u\n", sensorInfo.SensorID);
+        fprintf(fptr, "# Sensor color mode (from is_GetSensorInfo and "
                       "is_SetColorMode): %i | %i\n", 
                 sensorInfo.nColorMode, curr_color_mode);
-        fprintf(fptr, "Maximum image width and height: %i, %i\n", 
+        fprintf(fptr, "# Maximum image width and height: %i, %i\n", 
                        sensorInfo.nMaxWidth, sensorInfo.nMaxHeight);
-        fprintf(fptr, "Pixel size (micrometers): %.2f\n", 
+        fprintf(fptr, "# Pixel size (micrometers): %.2f\n", 
                       ((double) sensorInfo.wPixelSize)/100.0);
-        fprintf(fptr, "Gain settings: %i for master gain, %i for red gain, %i "
+        fprintf(fptr, "# Gain settings: %i for master gain, %i for red gain, %i "
                       "for green gain, and %i for blue gain.\n", 
                       curr_master_gain, curr_red_gain, curr_green_gain, 
                       curr_blue_gain);
-        fprintf(fptr, "Auto gain (should be disabled): %i\n", (int) curr_ag);
-        fprintf(fptr, "Gain boost (should be disabled): %i\n", curr_gain_boost);
-        fprintf(fptr, "Hardware gamma (should be disabled): %i\n", curr_gamma);
-        fprintf(fptr, "----------------------------------------------------\n");
-        fprintf(fptr, "Auto black level (should be off): %i\n", bl_mode);
-        fprintf(fptr, "Black level offset (desired is 50): %i\n", bl_offset);
+        fprintf(fptr, "# Auto gain (should be disabled): %i\n", (int) curr_ag);
+        fprintf(fptr, "# Gain boost (should be disabled): %i\n", curr_gain_boost);
+        fprintf(fptr, "# Hardware gamma (should be disabled): %i\n", curr_gamma);
+        fprintf(fptr, "# ----------------------------------------------------\n");
+        fprintf(fptr, "# Auto black level (should be off): %i\n", bl_mode);
+        fprintf(fptr, "# Black level offset (desired is 50): %i\n", bl_offset);
 
         // write header to data file
-        if (fprintf(fptr, "\nC time|GMT|Blob #|RA (deg)|DEC (deg)|FR (deg)|PS|"
+        if (fprintf(fptr, "\nC time|GMT|Blob #|RA (deg)|DEC (deg)|RA_OBS (deg)|DEC_OBS (deg)|FR (deg)|PS|"
                           "ALT (deg)|AZ (deg)|IR (deg)|Astrom. solve time "
                           "(msec)|Camera time (msec)") < 0) {
             fprintf(stderr, "Error writing header to observing file: %s.\n", 

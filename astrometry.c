@@ -279,7 +279,8 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 			printf(" > Writing Astrometry solution to data file...\n");
 		}
 
-		if (fprintf(fptr, "%i\t%lf\t%lf\t%lf\t%lf\t%.15f\t%.15f\t%lf\t%f", num_blobs, 
+		if (fprintf(fptr, "%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%.15f\t%.15f\t%lf\t%f", num_blobs,
+						ra, dec,
               			all_astro_params.ra, all_astro_params.dec, 
   						all_astro_params.fr, all_astro_params.ps, 
   						all_astro_params.alt, all_astro_params.az, 
