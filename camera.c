@@ -1176,9 +1176,9 @@ int doCameraAndAstrometry() {
         fprintf(fptr, "# Black level offset (desired is 50): %i\n", bl_offset);
 
         // write header to data file
-        if (fprintf(fptr, "\nC time,GMT,Blob #,RA (deg),DEC (deg),RA_OBS (deg),DEC_OBS (deg),FR (deg),PS,"
+        if (fprintf(fptr, "C time,GMT,Blob #,RA (deg),DEC (deg),RA_OBS (deg),DEC_OBS (deg),FR (deg),PS,"
                           "ALT (deg),AZ (deg),IR (deg),Astrom. solve time "
-                          "(msec),Camera time (msec)") < 0) {
+                          "(msec),Camera time (msec)\n") < 0) {
             fprintf(stderr, "Error writing header to observing file: %s.\n", 
                     strerror(errno));
         }
@@ -1486,7 +1486,7 @@ int doCameraAndAstrometry() {
         strftime(buff, sizeof(buff), "%b %d %H:%M:%S", tm_info); 
         printf("\nTime going into Astrometry.net: %s\n", buff);
 
-        if (fprintf(fptr, "\r%li,%s,", seconds, buff) < 0) {
+        if (fprintf(fptr, "%li,%s,", seconds, buff) < 0) {
             fprintf(stderr, "Unable to write time and blob count to observing "
                             "file: %s.\n", strerror(errno));
         }
@@ -1517,7 +1517,7 @@ int doCameraAndAstrometry() {
                camera_time*1e-6);
 
         // write this time to the data file
-        if (fprintf(fptr, ",%f", camera_time*1e-6) < 0) {
+        if (fprintf(fptr, ",%f\n", camera_time*1e-6) < 0) {
             fprintf(stderr, "Unable to write Astrometry solution time to "
                             "observing file: %s.\n", strerror(errno));
         }
