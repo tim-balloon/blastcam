@@ -1142,7 +1142,8 @@ int doCameraAndAstrometry() {
 
         // write observing information to data file
         strftime(buff, sizeof(buff), "%B %d Observing Session - beginning "
-                                     "%H:%M:%S GMT", tm_info); 
+                                     "%H:%M:%S GMT", tm_info);
+        fprintf(fptr, "\n");
         fprintf(fptr, "# ********************* %s *********************\n", buff);
         fprintf(fptr, "# Camera model: %s\n", sensorInfo.strSensorName);
         fprintf(fptr, "# ----------------------------------------------------\n");

@@ -296,9 +296,10 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		sol_status = 1;
 	} else {
 		// if no solution was found, write a line of 0s to the data file for ease of post-run data analysis
-		if (fprintf(fptr, "0,0,0,0,0,0,0,0,0,0,0,") < 0) {
+		if (fprintf(fptr, "0,0,0,0,0,0,0,0,0,0,0") < 0) {
             fprintf(stderr, "Unable to write time and blob count to observing file: %s.\n", strerror(errno));
 			}
+		fflush(fptr);
     }
 	
 	// clean everything up and return the status
