@@ -22,9 +22,9 @@
 
 #define _USE_MATH_DEFINES
 /* Longitude and latitude constants (deg) */
-#define backyard_lat  45.619471
-#define backyard_long 9.220168
-#define backyard_hm   58.17
+#define backyard_lat  32.233315
+#define backyard_long -110.948556
+#define backyard_hm   753.8
 
 engine_t * engine = NULL;
 solver_t * solver = NULL;

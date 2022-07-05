@@ -199,7 +199,7 @@ void * updateAstrometry() {
                    " auto-focus properly.\n");
         }
         printf("Sleeping between frames...\n");
-        int timeBetweenFramesSec = 1;
+        int timeBetweenFramesSec = 5;
         sleep(timeBetweenFramesSec);
 
     }
