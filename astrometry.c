@@ -279,7 +279,7 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 			printf(" > Writing Astrometry solution to data file...\n");
 		}
 
-		if (fprintf(fptr, "%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%.15f\t%.15f\t%lf\t%f", num_blobs,
+		if (fprintf(fptr, "%i,%lf,%lf,%lf,%lf,%lf,%lf,%.15f,%.15f,%lf,%f", num_blobs,
 						ra, dec,
               			all_astro_params.ra, all_astro_params.dec, 
   						all_astro_params.fr, all_astro_params.ps, 
@@ -296,7 +296,7 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		sol_status = 1;
 	} else {
 		// if no solution was found, write a line of 0s to the data file for ease of post-run data analysis
-		if (fprintf(fptr, "0\t0\t0\t0\t0\t0\t0\t0\t0\t") < 0) {
+		if (fprintf(fptr, "0,0,0,0,0,0,0,0,0,0,0,") < 0) {
             fprintf(stderr, "Unable to write time and blob count to observing file: %s.\n", strerror(errno));
 			}
     }
