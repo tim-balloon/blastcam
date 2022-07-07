@@ -1078,7 +1078,6 @@ int doCameraAndAstrometry() {
     static int * blob_mags;
     int blob_count;
     char datafile[100], buff[100], date[256];
-    // static: af_filename only defined on first autofocus pass, but in subsequent calls to doCameraAndAstrometry() gets passed to calculateOptimalFocus()
     static char af_filename[256];
     wchar_t filename[200] = L"";
     struct timespec camera_tp_beginning, camera_tp_end; 
