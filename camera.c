@@ -1077,7 +1077,9 @@ int doCameraAndAstrometry() {
     static int num_focus_pos;
     static int * blob_mags;
     int blob_count;
-    char datafile[100], buff[100], date[256], af_filename[256];
+    char datafile[100], buff[100], date[256];
+    // static: af_filename only defined on first autofocus pass, but in subsequent calls to doCameraAndAstrometry() gets passed to calculateOptimalFocus()
+    static char af_filename[256];
     wchar_t filename[200] = L"";
     struct timespec camera_tp_beginning, camera_tp_end; 
     time_t seconds = time(NULL);
@@ -1329,7 +1331,7 @@ int doCameraAndAstrometry() {
     // now have to distinguish between auto-focusing actions and solving
     if (all_camera_params.focus_mode && !all_camera_params.begin_auto_focus) {
         int brightest_blob, max_flux, focus_step;
-        int brightest_blob_x, brightest_blob_y;
+        int brightest_blob_x, brightest_blob_y = 0;
         char focus_str_cmd[10];
         char time_str[100];
 
@@ -1375,7 +1377,7 @@ int doCameraAndAstrometry() {
             }
            
             all_camera_params.flux = max_flux;
-            printf("(*) Brighest blob among %d photos for focus %d is %d.\n", 
+            printf("(*) Brightest blob among %d photos for focus %d is %d.\n", 
                    all_camera_params.photos_per_focus, 
                    all_camera_params.focus_position,
                    max_flux);
@@ -1417,7 +1419,7 @@ int doCameraAndAstrometry() {
                 all_camera_params.focus_mode = 0;
                 // at very last focus position
                 num_focus_pos++;
-
+                
                 best_focus = calculateOptimalFocus(num_focus_pos, af_filename);
                 if (best_focus == -1000) {
                     // if we can't find optimal focus from auto-focusing data, 
