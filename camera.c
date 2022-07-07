@@ -1077,7 +1077,9 @@ int doCameraAndAstrometry() {
     static int num_focus_pos;
     static int * blob_mags;
     int blob_count;
-    char datafile[100], buff[100], date[256], af_filename[256];
+    char datafile[100], buff[100], date[256];
+    // static: af_filename only defined on first autofocus pass, but in subsequent calls to doCameraAndAstrometry() gets passed to calculateOptimalFocus()
+    static char af_filename[256];
     wchar_t filename[200] = L"";
     struct timespec camera_tp_beginning, camera_tp_end; 
     time_t seconds = time(NULL);
@@ -1108,7 +1110,7 @@ int doCameraAndAstrometry() {
 
     // data file to pass to lostInSpace
     strftime(datafile, sizeof(datafile), 
-             "/home/blast/Desktop/blastcam/data_%b-%d.txt", tm_info);
+             "/home/starcam/Desktop/TIMSC/data_%b-%d.txt", tm_info);
     
     // set file descriptor for observing file to NULL in case of previous bad
     // shutdown or termination of Astrometry
@@ -1142,42 +1144,43 @@ int doCameraAndAstrometry() {
 
         // write observing information to data file
         strftime(buff, sizeof(buff), "%B %d Observing Session - beginning "
-                                     "%H:%M:%S GMT", tm_info); 
-        fprintf(fptr, "********************* %s *********************\n", buff);
-        fprintf(fptr, "Camera model: %s\n", sensorInfo.strSensorName);
-        fprintf(fptr, "----------------------------------------------------\n");
-        fprintf(fptr, "Exposure: %f milliseconds\n", curr_exposure);
-        fprintf(fptr, "Pixel clock: %i\n", curr_pc);
-        fprintf(fptr, "Frame rate achieved (desired is 10): %f\n", actual_fps);
-        fprintf(fptr, "Trigger delay (microseconds): %i\n", curr_trig_delay);
-        fprintf(fptr, "Current trigger mode setting: %i\n", curr_ext_trig);
-        fprintf(fptr, "Current trigger timeout: %i\n", curr_timeout);
-        fprintf(fptr, "Auto shutter: %.1f\n", curr_shutter);
-        fprintf(fptr, "Auto frame rate (should be disabled): %.1f\n", auto_fr);
-        fprintf(fptr, "----------------------------------------------------\n");
-        fprintf(fptr, "Sensor ID/type: %u\n", sensorInfo.SensorID);
-        fprintf(fptr, "Sensor color mode (from is_GetSensorInfo and "
+                                     "%H:%M:%S GMT", tm_info);
+        fprintf(fptr, "\n");
+        fprintf(fptr, "# ********************* %s *********************\n", buff);
+        fprintf(fptr, "# Camera model: %s\n", sensorInfo.strSensorName);
+        fprintf(fptr, "# ----------------------------------------------------\n");
+        fprintf(fptr, "# Exposure: %f milliseconds\n", curr_exposure);
+        fprintf(fptr, "# Pixel clock: %i\n", curr_pc);
+        fprintf(fptr, "# Frame rate achieved (desired is 10): %f\n", actual_fps);
+        fprintf(fptr, "# Trigger delay (microseconds): %i\n", curr_trig_delay);
+        fprintf(fptr, "# Current trigger mode setting: %i\n", curr_ext_trig);
+        fprintf(fptr, "# Current trigger timeout: %i\n", curr_timeout);
+        fprintf(fptr, "# Auto shutter: %.1f\n", curr_shutter);
+        fprintf(fptr, "# Auto frame rate (should be disabled): %.1f\n", auto_fr);
+        fprintf(fptr, "# ----------------------------------------------------\n");
+        fprintf(fptr, "# Sensor ID/type: %u\n", sensorInfo.SensorID);
+        fprintf(fptr, "# Sensor color mode (from is_GetSensorInfo and "
                       "is_SetColorMode): %i | %i\n", 
                 sensorInfo.nColorMode, curr_color_mode);
-        fprintf(fptr, "Maximum image width and height: %i, %i\n", 
+        fprintf(fptr, "# Maximum image width and height: %i, %i\n", 
                        sensorInfo.nMaxWidth, sensorInfo.nMaxHeight);
-        fprintf(fptr, "Pixel size (micrometers): %.2f\n", 
+        fprintf(fptr, "# Pixel size (micrometers): %.2f\n", 
                       ((double) sensorInfo.wPixelSize)/100.0);
-        fprintf(fptr, "Gain settings: %i for master gain, %i for red gain, %i "
+        fprintf(fptr, "# Gain settings: %i for master gain, %i for red gain, %i "
                       "for green gain, and %i for blue gain.\n", 
                       curr_master_gain, curr_red_gain, curr_green_gain, 
                       curr_blue_gain);
-        fprintf(fptr, "Auto gain (should be disabled): %i\n", (int) curr_ag);
-        fprintf(fptr, "Gain boost (should be disabled): %i\n", curr_gain_boost);
-        fprintf(fptr, "Hardware gamma (should be disabled): %i\n", curr_gamma);
-        fprintf(fptr, "----------------------------------------------------\n");
-        fprintf(fptr, "Auto black level (should be off): %i\n", bl_mode);
-        fprintf(fptr, "Black level offset (desired is 50): %i\n", bl_offset);
+        fprintf(fptr, "# Auto gain (should be disabled): %i\n", (int) curr_ag);
+        fprintf(fptr, "# Gain boost (should be disabled): %i\n", curr_gain_boost);
+        fprintf(fptr, "# Hardware gamma (should be disabled): %i\n", curr_gamma);
+        fprintf(fptr, "# ----------------------------------------------------\n");
+        fprintf(fptr, "# Auto black level (should be off): %i\n", bl_mode);
+        fprintf(fptr, "# Black level offset (desired is 50): %i\n", bl_offset);
 
         // write header to data file
-        if (fprintf(fptr, "\nC time|GMT|Blob #|RA (deg)|DEC (deg)|FR (deg)|PS|"
-                          "ALT (deg)|AZ (deg)|IR (deg)|Astrom. solve time "
-                          "(msec)|Camera time (msec)") < 0) {
+        if (fprintf(fptr, "C time,GMT,Blob #,RA (deg),DEC (deg),RA_OBS (deg),DEC_OBS (deg),FR (deg),PS,"
+                          "ALT (deg),AZ (deg),IR (deg),Astrom. solve time "
+                          "(msec),Camera time (msec)\n") < 0) {
             fprintf(stderr, "Error writing header to observing file: %s.\n", 
                     strerror(errno));
         }
@@ -1245,11 +1248,12 @@ int doCameraAndAstrometry() {
         }
 
         // clear previous contents of auto-focusing file (open in write mode)
-        strftime(af_filename, sizeof(af_filename), "/home/blast/Desktop/"
-                                                   "blastcam/auto_focus_"
-                                                   "starting_%Y-%m-%d_%H:%M:"
-                                                   "%S.txt", 
-                 tm_info);
+        strftime(
+            af_filename,
+            sizeof(af_filename),
+            "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H:%M:%S.txt",
+            tm_info
+        );
         if (verbose) {
             printf("Opening auto-focusing text file: %s\n", af_filename);
         }
@@ -1270,22 +1274,22 @@ int doCameraAndAstrometry() {
         all_blob_params.dynamic_hot_pixels = 0;
         
         // link the auto-focusing txt file to Kst for plotting
-        unlink("/home/blast/Desktop/blastcam/latest_auto_focus_data.txt");
+        unlink("/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
         symlink(af_filename, 
-                "/home/blast/Desktop/blastcam/latest_auto_focus_data.txt");
+                "/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
     }
 
     // take an image
-    // if (verbose) {
-    //      printf("\n> Taking a new image...\n\n");
-    // }
+    if (verbose) {
+         printf("\n> Taking a new image...\n\n");
+    }
 
-    // taking_image = 1;
-    // if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
-    //     const char * last_error_str = printCameraError();
-    //     printf("Failed to capture new image: %s\n", last_error_str);
-    // } 
-    // taking_image = 0;
+    taking_image = 1;
+    if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
+        const char * last_error_str = printCameraError();
+        printf("Failed to capture new image: %s\n", last_error_str);
+    } 
+    taking_image = 0;
 
     // get the image from memory
     if (is_GetActSeqBuf(camera_handle, &buffer_num, &waiting_mem, &memory) 
@@ -1294,8 +1298,9 @@ int doCameraAndAstrometry() {
         printf("Error retrieving the active image memory: %s.\n", cam_error);
     }
 
-    // testing pictures that have already been taken 
-    if (loadDummyPicture(L"/home/blast/Desktop/blastcam/BMPs/load_image.bmp", 
+    // testing pictures that have already been taken
+    /* 
+    if (loadDummyPicture(L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
                          &memory) == 1) {
         if (verbose) {
             printf("Successfully loaded test picture.\n");
@@ -1306,6 +1311,7 @@ int doCameraAndAstrometry() {
         usleep(1000000);
         return -1;
     }
+    */
 
     // find the blobs in the image
     blob_count = findBlobs(memory, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 
@@ -1325,7 +1331,7 @@ int doCameraAndAstrometry() {
     // now have to distinguish between auto-focusing actions and solving
     if (all_camera_params.focus_mode && !all_camera_params.begin_auto_focus) {
         int brightest_blob, max_flux, focus_step;
-        int brightest_blob_x, brightest_blob_y;
+        int brightest_blob_x, brightest_blob_y = 0;
         char focus_str_cmd[10];
         char time_str[100];
 
@@ -1347,7 +1353,7 @@ int doCameraAndAstrometry() {
                af_photo, all_camera_params.focus_position, brightest_blob);
 
         strftime(time_str, sizeof(time_str), "%Y-%m-%d_%H:%M:%S", tm_info);
-        sprintf(date, "/home/blast/Desktop/blastcam/BMPs/auto_focus_at_%d_"
+        sprintf(date, "/home/starcam/Desktop/TIMSC/BMPs/auto_focus_at_%d_"
                       "brightest_blob_%d_at_x%d_y%d_%s.bmp", 
                 all_camera_params.focus_position, brightest_blob, 
                 brightest_blob_x, brightest_blob_y, time_str);
@@ -1371,7 +1377,7 @@ int doCameraAndAstrometry() {
             }
            
             all_camera_params.flux = max_flux;
-            printf("(*) Brighest blob among %d photos for focus %d is %d.\n", 
+            printf("(*) Brightest blob among %d photos for focus %d is %d.\n", 
                    all_camera_params.photos_per_focus, 
                    all_camera_params.focus_position,
                    max_flux);
@@ -1413,7 +1419,7 @@ int doCameraAndAstrometry() {
                 all_camera_params.focus_mode = 0;
                 // at very last focus position
                 num_focus_pos++;
-
+                
                 best_focus = calculateOptimalFocus(num_focus_pos, af_filename);
                 if (best_focus == -1000) {
                     // if we can't find optimal focus from auto-focusing data, 
@@ -1474,7 +1480,7 @@ int doCameraAndAstrometry() {
             printf(">> No longer auto-focusing!\n");
         }
 
-        strftime(date, sizeof(date), "/home/blast/Desktop/blastcam/BMPs/"
+        strftime(date, sizeof(date), "/home/starcam/Desktop/TIMSC/BMPs/"
                                      "saved_image_%Y-%m-%d_%H:%M:%S.bmp", 
                                      tm_info);
         swprintf(filename, 200, L"%s", date);
@@ -1483,7 +1489,7 @@ int doCameraAndAstrometry() {
         strftime(buff, sizeof(buff), "%b %d %H:%M:%S", tm_info); 
         printf("\nTime going into Astrometry.net: %s\n", buff);
 
-        if (fprintf(fptr, "\r%li|%s|", seconds, buff) < 0) {
+        if (fprintf(fptr, "%li,%s,", seconds, buff) < 0) {
             fprintf(stderr, "Unable to write time and blob count to observing "
                             "file: %s.\n", strerror(errno));
         }
@@ -1514,7 +1520,7 @@ int doCameraAndAstrometry() {
                camera_time*1e-6);
 
         // write this time to the data file
-        if (fprintf(fptr, "|%f", camera_time*1e-6) < 0) {
+        if (fprintf(fptr, ",%f\n", camera_time*1e-6) < 0) {
             fprintf(stderr, "Unable to write Astrometry solution time to "
                             "observing file: %s.\n", strerror(errno));
         }
@@ -1533,9 +1539,9 @@ int doCameraAndAstrometry() {
 
     wprintf(L"Saving to \"%s\"\n", filename);
     // unlink whatever the latest saved image was linked to before
-    unlink("/home/blast/Desktop/blastcam/BMPs/latest_saved_image.bmp");
+    unlink("/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.bmp");
     // sym link current date to latest image for live Kst updates
-    symlink(date, "/home/blast/Desktop/blastcam/BMPs/latest_saved_image.bmp");
+    symlink(date, "/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.bmp");
 
     // make a table of blobs for Kst
     if (makeTable("makeTable.txt", star_mags, star_x, star_y, blob_count) != 1) {

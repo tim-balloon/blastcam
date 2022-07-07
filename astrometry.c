@@ -13,8 +13,7 @@
 #include <astrometry/fileutils.h>
 #include <ueye.h>
 #include <sofa/sofa.h>
-#include "/home/xscblast/astrometry/blind/solver.c"
-#include "/home/xscblast/astrometry/blind/engine.c"
+#include <errno.h>
 
 #include "camera.h"
 #include "astrometry.h"
@@ -23,9 +22,9 @@
 
 #define _USE_MATH_DEFINES
 /* Longitude and latitude constants (deg) */
-#define backyard_lat  45.619471
-#define backyard_long 9.220168
-#define backyard_hm   58.17
+#define backyard_lat  32.233315
+#define backyard_long -110.948556
+#define backyard_hm   753.8
 
 engine_t * engine = NULL;
 solver_t * solver = NULL;
@@ -194,6 +193,11 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 
 	// solution status should be 0 since we have yet to achieve a solution 
 	sol_status = 0;
+	if ((fptr = fopen(datafile, "a")) == NULL) {
+		fprintf(stderr, "Could not open observing file: %s.\n", 
+				strerror(errno));
+		return sol_status;
+	}
 	if ((*solver).best_match_solves) {
 		double pscale;
 		tan_t * wcs;
@@ -275,14 +279,8 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 			printf(" > Writing Astrometry solution to data file...\n");
 		}
 
-		if ((fptr = fopen(datafile, "a")) == NULL) {
-		    fprintf(stderr, "Could not open observing file: %s.\n", 
-					strerror(errno));
-		    return sol_status;
-		}
-
-
-		if (fprintf(fptr, "%i\t%lf\t%lf\t%lf\t%lf\t%.15f\t%.15f\t%lf\t%f", num_blobs, 
+		if (fprintf(fptr, "%i,%lf,%lf,%lf,%lf,%lf,%lf,%.15f,%.15f,%lf,%f", num_blobs,
+						ra, dec,
               			all_astro_params.ra, all_astro_params.dec, 
   						all_astro_params.fr, all_astro_params.ps, 
   						all_astro_params.alt, all_astro_params.az, 
@@ -298,9 +296,10 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		sol_status = 1;
 	} else {
 		// if no solution was found, write a line of 0s to the data file for ease of post-run data analysis
-		if (fprintf(fptr, "0\t0\t0\t0\t0\t0\t0\t0\t0\t") < 0) {
+		if (fprintf(fptr, "0,0,0,0,0,0,0,0,0,0,0") < 0) {
             fprintf(stderr, "Unable to write time and blob count to observing file: %s.\n", strerror(errno));
 			}
+		fflush(fptr);
     }
 	
 	// clean everything up and return the status
