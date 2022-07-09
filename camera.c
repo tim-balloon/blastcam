@@ -1330,7 +1330,7 @@ int doCameraAndAstrometry() {
     // now have to distinguish between auto-focusing actions and solving
     if (all_camera_params.focus_mode && !all_camera_params.begin_auto_focus) {
         int brightest_blob, max_flux, focus_step;
-        int brightest_blob_x, brightest_blob_y = 0;
+        int brightest_blob_x = 0, brightest_blob_y = 0;
         char focus_str_cmd[10];
         char time_str[100];
 
