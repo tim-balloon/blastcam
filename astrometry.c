@@ -133,7 +133,7 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 	double d1, d2;
 	// 'ob' means observed (observed frame versus ICRS frame)
 	double aob, zob, hob, dob, rob, eo;
-	FILE * fptr;
+	FILE * fptr = NULL;
 
 	// reset solver timeout
 	solver_timelimit = (int) all_astro_params.timelimit;
