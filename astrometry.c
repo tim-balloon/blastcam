@@ -30,6 +30,8 @@ engine_t * engine = NULL;
 solver_t * solver = NULL;
 int solver_timelimit;
 
+struct mcp_astrometry mcp_astro;
+
 /* Astrometry parameters global structure, accessible from commands.c as well */
 struct astrometry all_astro_params = {
 	.timelimit = 1,
@@ -241,7 +243,10 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		if (clock_gettime(CLOCK_REALTIME, &astrom_tp_end) == -1) {
         	fprintf(stderr, "Error ending timer: %s.\n", strerror(errno));
     	}
-
+		mcp_astro.dec_j2000 = dec;
+		mcp_astro.ra_j2000 = ra;
+		mcp_astro.dec_observed = dob*(180.0/M_PI);
+		mcp_astro.ra_observed = rob*(180.0/M_PI);
 		// update astro struct with telemetry
 		all_astro_params.ir = ir;
 		all_astro_params.ra = rob*(180.0/M_PI);
@@ -300,6 +305,7 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
             fprintf(stderr, "Unable to write time and blob count to observing file: %s.\n", strerror(errno));
 			}
 		fflush(fptr);
+		fclose(fptr);
     }
 	
 	// clean everything up and return the status

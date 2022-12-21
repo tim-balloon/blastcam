@@ -27,6 +27,15 @@ struct astrometry {
 };
 #pragma pack(pop)
 
+struct mcp_astrometry {
+    double ra_j2000;
+    double dec_j2000;
+    double ra_observed;
+    double dec_observed;
+};
+
+extern struct mcp_astrometry mcp_astro;
+
 extern struct astrometry all_astro_params;
 
 #endif 

@@ -20,6 +20,12 @@
 #include "lens_adapter.h"
 #include "commands.h"
 
+// For having star cameras talk back to mcp
+#define PORT "4950"
+#define MAX_LENGTH 100
+// #define DESTINATION "127.0.0.1" // or NULL
+#define DESTINATION "192.168.0.41"
+
 #pragma pack(push, 1)
 /* Telemetry and camera settings structure */
 struct telemetry {
@@ -192,18 +198,48 @@ void verifyTelemetryData() {
 ** Output: None (void). 
 */
 void * updateAstrometry() {
+    // have star cameras talk back to mcp
+    // open a writing socket to my destination address
+    int sockfd;
+    struct addrinfo hints, *servinfo, *p;
+    int rv;
+    int numbytes;
+    int bytes_sent;
+    int length;
+    int *retval;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; // set to AF_INET to use IPv4
+    hints.ai_socktype = SOCK_DGRAM;
+    // dummy values for testing
+    mcp_astro.ra_j2000 = 1.123145141212;
+    mcp_astro.dec_j2000 = 5.64535233423;
+
+    if ((rv = getaddrinfo(DESTINATION, PORT, &hints, &servinfo)) != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        *retval = 1;
+        return retval;
+    }
+        // loop through all the results and make a socket
+    printf("Making a socket...\n");
+    sockfd = socket(servinfo->ai_family,servinfo->ai_socktype, servinfo->ai_protocol);
     // solve astrometry perpetually when the camera is not shutting down
     while (!shutting_down) {
         if (doCameraAndAstrometry() < 1) {
             printf("Did not solve or timeout of Astrometry properly, or did not"
                    " auto-focus properly.\n");
         }
+        length = sizeof(mcp_astro);
+        if ((bytes_sent = sendto(sockfd, &mcp_astro, length, 0,servinfo->ai_addr, servinfo->ai_addrlen)) == -1) {
+            perror("camera software failed to spew: sendto");
+            exit(1);
+        }
+        printf("Camera software: sent %d bytes to %s\n", bytes_sent, DESTINATION);
         printf("Sleeping between frames...\n");
-        int timeBetweenFramesSec = 5;
+        int timeBetweenFramesSec = 0;
         sleep(timeBetweenFramesSec);
-
     }
-
+    freeaddrinfo(servinfo);
+    close(sockfd);
     // when we are shutting down or exiting, close Astrometry engine and solver
     closeAstrometry();
 
