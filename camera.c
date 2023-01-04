@@ -1180,7 +1180,7 @@ int doCameraAndAstrometry() {
         // write header to data file
         if (fprintf(fptr, "C time,GMT,Blob #,RA (deg),DEC (deg),RA_OBS (deg),DEC_OBS (deg),FR (deg),PS,"
                           "ALT (deg),AZ (deg),IR (deg),Astrom. solve time "
-                          "(msec),Camera time (msec)\n") < 0) {
+                          "(msec),Solution Uncertainty (arcsec),Camera time (msec)\n") < 0) {
             fprintf(stderr, "Error writing header to observing file: %s.\n", 
                     strerror(errno));
         }
@@ -1299,19 +1299,17 @@ int doCameraAndAstrometry() {
     }
 
     // testing pictures that have already been taken
-    /* 
-    if (loadDummyPicture(L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
-                         &memory) == 1) {
-        if (verbose) {
-            printf("Successfully loaded test picture.\n");
-        }
-    } else {
-        fprintf(stderr, "Error loading test picture: %s.\n", strerror(errno));
-        // can't solve without a picture to solve on!
-        usleep(1000000);
-        return -1;
-    }
-    */
+    // if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
+    //                      &memory) == 1) {
+    //     if (verbose) {
+    //         printf("Successfully loaded test picture.\n");
+    //     }
+    // } else {
+    //     fprintf(stderr, "Error loading test picture: %s.\n", strerror(errno));
+    //     // can't solve without a picture to solve on!
+    //     usleep(1000000);
+    //     return -1;
+    // }
 
     // find the blobs in the image
     blob_count = findBlobs(memory, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 

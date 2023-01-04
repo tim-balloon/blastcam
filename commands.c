@@ -235,7 +235,7 @@ void * updateAstrometry() {
         }
         printf("Camera software: sent %d bytes to %s\n", bytes_sent, DESTINATION);
         printf("Sleeping between frames...\n");
-        int timeBetweenFramesSec = 0;
+        int timeBetweenFramesSec = 5;
         sleep(timeBetweenFramesSec);
     }
     freeaddrinfo(servinfo);

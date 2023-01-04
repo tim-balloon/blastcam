@@ -24,6 +24,7 @@ struct astrometry {
     double ir;
     double alt;
     double az;
+    double sigma_pointing_as;
 };
 #pragma pack(pop)
 
@@ -32,6 +33,7 @@ struct mcp_astrometry {
     double dec_j2000;
     double ra_observed;
     double dec_observed;
+    double sigma_pointing_as;
 };
 
 extern struct mcp_astrometry mcp_astro;
