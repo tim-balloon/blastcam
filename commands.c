@@ -19,6 +19,13 @@
 #include "astrometry.h"
 #include "lens_adapter.h"
 #include "commands.h"
+#include "sc_listen.h"
+
+// For having star cameras talk back to mcp
+#define PORT "4950"
+#define MAX_LENGTH 100
+// #define DESTINATION "127.0.0.1" // or NULL
+#define DESTINATION "192.168.0.41"
 
 #pragma pack(push, 1)
 /* Telemetry and camera settings structure */
@@ -74,13 +81,13 @@ struct commands all_cmds = {0};
 struct telemetry all_data = {0};
 int num_clients = 0;
 int telemetry_sent = 0;
+// if 1, then commanding is in use; if 0, then not
+int command_lock = 0;
 // flag for cancelling auto-focus mid-process
 int cancelling_auto_focus = 0;
 // assume non-verbose output
 int verbose = 0;
 void * camera_raw = NULL;
-// if 1, then commanding is in use; if 0, then not
-int command_lock = 0;
 // if 0, then camera is not closing, so keep solving astrometry       
 int shutting_down = 0;
 // return values for terminating the threads
@@ -192,18 +199,48 @@ void verifyTelemetryData() {
 ** Output: None (void). 
 */
 void * updateAstrometry() {
+    // have star cameras talk back to mcp
+    // open a writing socket to my destination address
+    int sockfd;
+    struct addrinfo hints, *servinfo, *p;
+    int rv;
+    int numbytes;
+    int bytes_sent;
+    int length;
+    int *retval;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; // set to AF_INET to use IPv4
+    hints.ai_socktype = SOCK_DGRAM;
+    // dummy values for testing
+    mcp_astro.ra_j2000 = 1.123145141212;
+    mcp_astro.dec_j2000 = 5.64535233423;
+
+    if ((rv = getaddrinfo(DESTINATION, PORT, &hints, &servinfo)) != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        *retval = 1;
+        return retval;
+    }
+        // loop through all the results and make a socket
+    printf("Making a socket...\n");
+    sockfd = socket(servinfo->ai_family,servinfo->ai_socktype, servinfo->ai_protocol);
     // solve astrometry perpetually when the camera is not shutting down
     while (!shutting_down) {
         if (doCameraAndAstrometry() < 1) {
             printf("Did not solve or timeout of Astrometry properly, or did not"
                    " auto-focus properly.\n");
         }
+        /* length = sizeof(mcp_astro);
+        if ((bytes_sent = sendto(sockfd, &mcp_astro, length, 0,servinfo->ai_addr, servinfo->ai_addrlen)) == -1) {
+            perror("camera software failed to spew: sendto");
+            exit(1);
+        } */
+        printf("Camera software: sent %d bytes to %s\n", bytes_sent, DESTINATION);
         printf("Sleeping between frames...\n");
         int timeBetweenFramesSec = 5;
         sleep(timeBetweenFramesSec);
-
     }
-
+    freeaddrinfo(servinfo);
+    close(sockfd);
     // when we are shutting down or exiting, close Astrometry engine and solver
     closeAstrometry();
 
@@ -371,6 +408,7 @@ void * processClient(void * for_client_thread) {
             break;
         } 
 
+
         if (send(socket, camera_raw, CAMERA_WIDTH*CAMERA_HEIGHT, 
                  MSG_NOSIGNAL) <= 0) {
             printf("Client dropped the connection.\n");
@@ -397,6 +435,9 @@ void * processClient(void * for_client_thread) {
     pthread_exit(&client_thread_ret);
 }
 
+
+
+
 /* Driver function for Star Camera operation.
 ** Input: Number of command-line arguments passed and an array of those argu-
 ** ments.
@@ -408,6 +449,16 @@ int main(int argc, char * argv[]) {
     signal(SIGINT, clean);
     signal(SIGTERM, clean);
     signal(SIGPIPE, SIG_IGN);
+
+    // setup the MCP monitoring thread here
+    pthread_t listen_self;
+    sprintf(listenSelf.ipAddr,"%s",FC2_IP_ADDR);
+    sprintf(listenSelf.port,"%s",SC1_COMMAND_PORT_FC2);
+    listenSelf.image_solutions = NULL;
+    listenSelf.camera_params = NULL;
+    listenSelf.camera_commands = &FC1_in;
+
+
 
     int opt;                         // parsing command-line options
     int long_index = 0;              // for tracking which option we're at
@@ -628,6 +679,10 @@ int main(int argc, char * argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // Create the listening threads for MCP
+    pthread_create(&listen_self, NULL, listen_thread, (void *) &listenSelf);
+
+
     // loop forever, accepting new clients
     client_addr_len = sizeof(struct sockaddr_in); 
     while ((!shutting_down) && (newsockfd = accept(sockfd, (struct sockaddr *) 
@@ -671,6 +726,9 @@ int main(int argc, char * argv[]) {
             num_clients++;
         }
     }
+
+    // Join the listening threads now that everything is dying
+    pthread_join(listen_self, NULL);
     
     // join threads once the Astrometry thread has closed and terminated
     pthread_join(astro_thread_id, (void **) &(astro_ptr));

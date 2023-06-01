@@ -1,5 +1,6 @@
 #ifndef CAMERA_H
 #define CAMERA_H
+#include "astrometry.h"
 
 // SO Star Camera is 1936 width by 1216 height; BLAST is 1392 by 1040
 #define CAMERA_WIDTH   1936 	 // [px]
@@ -15,6 +16,8 @@ extern HIDS camera_handle;
 extern int shutting_down;
 extern int send_data;
 extern int taking_image;
+extern struct mcp_astrometry mcp_astro;
+
 
 /* Blob-finding parameters */
 #pragma pack(push, 1)

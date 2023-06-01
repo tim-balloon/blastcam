@@ -19,6 +19,7 @@
 #include "astrometry.h"
 #include "lens_adapter.h"
 #include "commands.h"
+#include "sc_data_structures.h"
 
 #define _USE_MATH_DEFINES
 /* Longitude and latitude constants (deg) */
@@ -29,6 +30,9 @@
 engine_t * engine = NULL;
 solver_t * solver = NULL;
 int solver_timelimit;
+
+struct mcp_astrometry mcp_astro;
+
 
 /* Astrometry parameters global structure, accessible from commands.c as well */
 struct astrometry all_astro_params = {
@@ -45,6 +49,7 @@ struct astrometry all_astro_params = {
 	.ir = 0,
 	.alt = 0,
 	.az = 0,
+	.sigma_pointing_as = 0,
 };
 
 /* Function to decrement a counter for tracking Astrometry timeout.
@@ -126,12 +131,12 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 	// timers for astrometry
 	struct timespec astrom_tp_beginning, astrom_tp_end; 
 	double hprange, start, end, astrom_time;
-	double ra, dec, fr, ps, ir;
+	double ra, dec, fr, ps, ir, sigma_pointing;
 	// for apportioning Julian dates
 	double d1, d2;
 	// 'ob' means observed (observed frame versus ICRS frame)
 	double aob, zob, hob, dob, rob, eo;
-	FILE * fptr;
+	FILE * fptr = NULL;
 
 	// reset solver timeout
 	solver_timelimit = (int) all_astro_params.timelimit;
@@ -237,11 +242,61 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		ir = (iauHd2pa(hob, dob, 
 		               all_astro_params.latitude*(M_PI/180.0)))*(180.0/M_PI) - fr;
 
+		// Calculate the RMS uncertainty for the particular starfield that was
+		// just matched
+		// Get the ra, dec positions of the best-matching database field of
+		// stars from their unit sphere xyz coords
+		MatchObj* mo = &((*solver).best_match);
+		mo->refradec = malloc(3 * mo->nindex * sizeof(double));
+		for (uint i = 0; i < mo->nindex; i++)
+		{
+			xyzarr2radecdegarr(mo->refxyz + i * 3, mo->refradec + i * 2);
+		}
+		// generate the sip from the wsctan
+		sip_t sip;
+		sip_wrap_tan(wcs, &sip);
+
+		double sum_sq_diffs = 0;
+		int counter = 0;
+		for (uint j = 0; j < solver->best_match.nfield; j++)
+		{
+			// Unpack the reference star locations from the best match object and translate them to XY coordinates
+			double fx, fy, rx, ry, refRA, refDec;
+			int ti, ri;
+			ri = mo->theta[j];
+			if (ri < 0)
+			{
+				continue;
+			}
+			ti = j;
+			refRA = mo->refradec[2*ri+0];
+			refDec = mo->refradec[2*ri+1];
+			if (!sip_radec2pixelxy(&sip, refRA, refDec, &rx, &ry))
+			{
+				continue;
+			}
+			// Get the pixel positions of the blobs we found
+			fx = solver->fieldxy->x[ti];
+			fy = solver->fieldxy->y[ti];
+			
+			// rolling total of the sum of the square differences
+			sum_sq_diffs += ((fx - rx) * (fx - rx)) + ((fy - ry) * (fy - ry));
+			counter++;
+		}
+
+		// Convert sum of square differences into RMS uncertainty 
+		sigma_pointing = sqrt(sum_sq_diffs / counter);
+		double sigma_pointing_as = sigma_pointing * ps;
+
 		// end timer
 		if (clock_gettime(CLOCK_REALTIME, &astrom_tp_end) == -1) {
         	fprintf(stderr, "Error ending timer: %s.\n", strerror(errno));
     	}
-
+		mcp_astro.dec_j2000 = dec;
+		mcp_astro.ra_j2000 = ra;
+		mcp_astro.dec_observed = dob*(180.0/M_PI);
+		mcp_astro.ra_observed = rob*(180.0/M_PI);
+		mcp_astro.image_rms = sigma_pointing_as;
 		// update astro struct with telemetry
 		all_astro_params.ir = ir;
 		all_astro_params.ra = rob*(180.0/M_PI);
@@ -250,6 +305,7 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		all_astro_params.az = aob*(180.0/M_PI); 
 		all_astro_params.fr = fr;
 		all_astro_params.ps = ps;
+		all_astro_params.sigma_pointing_as = sigma_pointing_as;
 
 		printf("\n+---------------------------------------------------------+\n");
 		printf("|\t\tTelemetry\t\t\t\t  |\n");
@@ -260,11 +316,12 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		printf("|\tAstrometry DEC (deg): %lf\t\t\t  |\n", dec);
 		printf("|\tObserved RA (deg): %lf\t\t\t  |\n", all_astro_params.ra);
 		printf("|\tObserved DEC (deg): %lf\t\t\t  |\n", all_astro_params.dec);
-		printf("|\tField rotation (deg): %f\t\t\t  |\n", all_astro_params.fr);
+		printf("|\tField rotation (deg): %f\t\t  |\n", all_astro_params.fr);
 		printf("|\tImage rotation (deg): %lf\t\t  |\n", all_astro_params.ir);
 		printf("|\tPixel scale (arcsec/px): %lf\t\t  |\n", all_astro_params.ps);
 		printf("|\tAltitude (deg): %.15f\t\t  |\n", all_astro_params.alt);
 		printf("|\tAzimuth (deg): %.15f\t\t  |\n", all_astro_params.az);
+		printf("|\tPointing uncertainty (arcsec): %.3lf\t\t  |\n", all_astro_params.sigma_pointing_as);
 		printf("+---------------------------------------------------------+\n\n");
 
 
@@ -279,12 +336,13 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 			printf(" > Writing Astrometry solution to data file...\n");
 		}
 
-		if (fprintf(fptr, "%i,%lf,%lf,%lf,%lf,%lf,%lf,%.15f,%.15f,%lf,%f", num_blobs,
+		if (fprintf(fptr, "%i,%lf,%lf,%lf,%lf,%lf,%lf,%.15f,%.15f,%lf,%f,%.15lf", num_blobs,
 						ra, dec,
               			all_astro_params.ra, all_astro_params.dec, 
   						all_astro_params.fr, all_astro_params.ps, 
   						all_astro_params.alt, all_astro_params.az, 
-  						all_astro_params.ir, astrom_time*1e-6) < 0) {
+  						all_astro_params.ir, astrom_time*1e-6,
+						all_astro_params.sigma_pointing_as) < 0) {
   			fprintf(stderr, "Error writing solution to observing file: %s.\n", 
   	        	strerror(errno));
   		}
@@ -296,10 +354,11 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		sol_status = 1;
 	} else {
 		// if no solution was found, write a line of 0s to the data file for ease of post-run data analysis
-		if (fprintf(fptr, "0,0,0,0,0,0,0,0,0,0,0") < 0) {
+		if (fprintf(fptr, "0,0,0,0,0,0,0,0,0,0,0,0") < 0) {
             fprintf(stderr, "Unable to write time and blob count to observing file: %s.\n", strerror(errno));
 			}
 		fflush(fptr);
+		fclose(fptr);
     }
 	
 	// clean everything up and return the status

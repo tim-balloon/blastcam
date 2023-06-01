@@ -1,6 +1,7 @@
 #ifndef ASTROMETRY_H
 #define ASTROMETRY_H
 
+
 int initAstrometry();
 void closeAstrometry();
 int lostInSpace(double * star_x, double * star_y, double * star_mags, 
@@ -24,8 +25,12 @@ struct astrometry {
     double ir;
     double alt;
     double az;
+    double sigma_pointing_as;
 };
 #pragma pack(pop)
+
+
+extern struct mcp_astrometry mcp_astro;
 
 extern struct astrometry all_astro_params;
 

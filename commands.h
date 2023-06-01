@@ -1,3 +1,4 @@
+#include "astrometry.h"
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
@@ -7,5 +8,5 @@ extern int cancelling_auto_focus;
 extern int verbose;
 extern void * camera_raw;
 void * processClient(void * arg);
-
+extern struct mcp_astrometry mcp_astro;
 #endif
