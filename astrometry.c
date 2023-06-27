@@ -298,6 +298,8 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		mcp_astro.ra_observed = rob*(180.0/M_PI);
 		mcp_astro.image_rms = sigma_pointing_as;
 		// update astro struct with telemetry
+		all_astro_params.dec_j2000 = dec;
+		all_astro_params.ra_j2000 = ra;
 		all_astro_params.ir = ir;
 		all_astro_params.ra = rob*(180.0/M_PI);
 		all_astro_params.dec = dob*(180.0/M_PI);

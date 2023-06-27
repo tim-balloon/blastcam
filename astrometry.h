@@ -26,6 +26,9 @@ struct astrometry {
     double alt;
     double az;
     double sigma_pointing_as;
+    double dec_j2000;
+    double ra_j2000;
+    double photo_time;
 };
 #pragma pack(pop)
 

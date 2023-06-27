@@ -30,6 +30,15 @@ struct socket_data fc2Socket_listen;
 struct socket_data listenSelf;
 struct socket_errors sock_status;
 struct comms_data thread_comms;
+struct socket_data fc1_return_socket;
+struct socket_data fc2_return_socket;
+struct socket_data fc1_image_socket;
+struct socket_data fc2_image_socket;
+struct star_cam_return FC1_return;
+struct star_cam_return FC2_return;
+struct mcp_astrometry FC1_astro;
+struct mcp_astrometry FC2_astro;
+
 
 void set_status(char * ip, char * listen, int value);
 int aperture_allowed(float aperture_value);

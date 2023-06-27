@@ -16,6 +16,7 @@ extern HIDS camera_handle;
 extern int shutting_down;
 extern int send_data;
 extern int taking_image;
+extern int image_solved[2];
 extern struct mcp_astrometry mcp_astro;
 
 

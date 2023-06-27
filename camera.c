@@ -1324,7 +1324,7 @@ int doCameraAndAstrometry() {
     taking_image = 0;
     gettimeofday(&tv, NULL);
     photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
-    mcp_astro.photo_time = photo_time;
+    all_astro_params.photo_time = photo_time;
 
     // get the image from memory
     if (is_GetActSeqBuf(camera_handle, &buffer_num, &waiting_mem, &memory) 
@@ -1360,18 +1360,6 @@ int doCameraAndAstrometry() {
                            &star_y, &star_mags, output_buffer);
         all_blob_params.high_pass_filter = 0;
     }
-    
-
-    // ok need to put all of this into a for loop to edit starx, stary
-
-    // // Add in some *extremely* basic centroiding
-    // printf("the n-1 blob x location is %lf\n", star_x[0]);
-    // printf("the n-1 blob y location is %lf\n", star_y[0]);
-    // // int test_index = CAMERA_WIDTH*star_y[0]+star_x[0]-1;
-    // int test_index2 = CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[0])+star_x[0];
-    // printf("star mag saved was %lf\n", star_mags[0]);
-    // // printf("I index in and see %d\n", (int) memory[test_index]);
-    // printf("I index in and see %d\n", (int) memory[test_index2]);
 
     // temp variable to store the position of each blob in the flattened array
     int image_locs[9];
@@ -1417,15 +1405,8 @@ int doCameraAndAstrometry() {
             new_x += x_locs[j3];
             new_y += y_locs[j3];
         }
-        /* printf("Blob number is %d", i+1);
-        printf("the old location is x = %lf, y = %lf\n", star_x[i],star_y[i]);
-        printf("New location is x = %lf, y = %lf\n", new_x, new_y); */
         star_x[i] = new_x;
         star_y[i] = new_y;
-        /* printf("Pixel sum is %0.4lf\n", sum);
-        printf("%d %d %d\n",memory[image_locs[0]],memory[image_locs[1]],memory[image_locs[2]]);
-        printf("%d %d %d\n",memory[image_locs[3]],memory[image_locs[4]],memory[image_locs[5]]);
-        printf("%d %d %d\n",memory[image_locs[6]],memory[image_locs[7]],memory[image_locs[8]]); */
     }
 
     // make kst display the filtered image 
@@ -1614,6 +1595,10 @@ int doCameraAndAstrometry() {
         if (lostInSpace(star_x, star_y, star_mags, blob_count, tm_info, 
                         datafile) != 1) {
             printf("\n(*) Could not solve Astrometry.\n");
+        } else {
+            // let the astro thread know to send data
+            image_solved[0] = 1;
+            image_solved[1] = 1;
         }
 
         // get current time right after solving

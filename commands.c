@@ -20,12 +20,8 @@
 #include "lens_adapter.h"
 #include "commands.h"
 #include "sc_listen.h"
+#include "sc_send.h"
 
-// For having star cameras talk back to mcp
-#define PORT "4950"
-#define MAX_LENGTH 100
-// #define DESTINATION "127.0.0.1" // or NULL
-#define DESTINATION "192.168.0.41"
 
 #pragma pack(push, 1)
 /* Telemetry and camera settings structure */
@@ -199,48 +195,16 @@ void verifyTelemetryData() {
 ** Output: None (void). 
 */
 void * updateAstrometry() {
-    // have star cameras talk back to mcp
-    // open a writing socket to my destination address
-    int sockfd;
-    struct addrinfo hints, *servinfo, *p;
-    int rv;
-    int numbytes;
-    int bytes_sent;
-    int length;
-    int *retval;
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_INET; // set to AF_INET to use IPv4
-    hints.ai_socktype = SOCK_DGRAM;
-    // dummy values for testing
-    mcp_astro.ra_j2000 = 1.123145141212;
-    mcp_astro.dec_j2000 = 5.64535233423;
-
-    if ((rv = getaddrinfo(DESTINATION, PORT, &hints, &servinfo)) != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-        *retval = 1;
-        return retval;
-    }
-        // loop through all the results and make a socket
-    printf("Making a socket...\n");
-    sockfd = socket(servinfo->ai_family,servinfo->ai_socktype, servinfo->ai_protocol);
     // solve astrometry perpetually when the camera is not shutting down
     while (!shutting_down) {
         if (doCameraAndAstrometry() < 1) {
             printf("Did not solve or timeout of Astrometry properly, or did not"
                    " auto-focus properly.\n");
         }
-        /* length = sizeof(mcp_astro);
-        if ((bytes_sent = sendto(sockfd, &mcp_astro, length, 0,servinfo->ai_addr, servinfo->ai_addrlen)) == -1) {
-            perror("camera software failed to spew: sendto");
-            exit(1);
-        } */
-        printf("Camera software: sent %d bytes to %s\n", bytes_sent, DESTINATION);
         printf("Sleeping between frames...\n");
         int timeBetweenFramesSec = 5;
         sleep(timeBetweenFramesSec);
     }
-    freeaddrinfo(servinfo);
-    close(sockfd);
     // when we are shutting down or exiting, close Astrometry engine and solver
     closeAstrometry();
 
@@ -451,12 +415,27 @@ int main(int argc, char * argv[]) {
     signal(SIGPIPE, SIG_IGN);
 
     // setup the MCP monitoring thread here
-    pthread_t listen_self;
-    sprintf(listenSelf.ipAddr,"%s",FC2_IP_ADDR);
-    sprintf(listenSelf.port,"%s",SC1_COMMAND_PORT_FC2);
-    listenSelf.image_solutions = NULL;
-    listenSelf.camera_params = NULL;
-    listenSelf.camera_commands = &FC1_in;
+    pthread_t listen_fc2;
+    sprintf(fc2Socket_listen.ipAddr,"%s",FC2_IP_ADDR);
+    sprintf(fc2Socket_listen.port,"%s",SC1_COMMAND_PORT_FC2);
+    fc2Socket_listen.image_solutions = NULL;
+    fc2Socket_listen.camera_params = NULL;
+    fc2Socket_listen.camera_commands = &FC2_in;
+
+    // setups MCP data return threads here
+    pthread_t params_fc2;
+    sprintf(fc2_return_socket.ipAddr, "%s", FC2_IP_ADDR);
+    sprintf(fc2_return_socket.port,"%s", SC1_RECEIVE_PARAM_PORT);
+    fc2_return_socket.image_solutions = NULL;
+    fc2_return_socket.camera_params = &FC2_return;
+    fc2_return_socket.camera_commands = NULL;
+    pthread_t images_fc2;
+    sprintf(fc2_image_socket.ipAddr, "%s", FC2_IP_ADDR);
+    sprintf(fc2_image_socket.port, "%s", SC1_RECEIVE_SOLVE_PORT);
+    fc2_image_socket.image_solutions = &FC2_astro;
+    fc2_image_socket.camera_params = NULL;
+    fc2_image_socket.camera_commands = NULL;
+    
 
 
 
@@ -680,8 +659,11 @@ int main(int argc, char * argv[]) {
     }
 
     // Create the listening threads for MCP
-    pthread_create(&listen_self, NULL, listen_thread, (void *) &listenSelf);
+    pthread_create(&listen_fc2, NULL, listen_thread, (void *) &fc2Socket_listen);
 
+    // Create the talking threads for MCP
+    pthread_create(&fc2_image_socket, NULL, astrometry_data_thread, (void *) &fc2_image_socket);
+    pthread_create(&fc2_return_socket, NULL, parameter_data_thread, (void *) &fc2_return_socket); 
 
     // loop forever, accepting new clients
     client_addr_len = sizeof(struct sockaddr_in); 
