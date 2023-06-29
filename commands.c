@@ -662,8 +662,8 @@ int main(int argc, char * argv[]) {
     pthread_create(&listen_fc2, NULL, listen_thread, (void *) &fc2Socket_listen);
 
     // Create the talking threads for MCP
-    pthread_create(&fc2_image_socket, NULL, astrometry_data_thread, (void *) &fc2_image_socket);
-    pthread_create(&fc2_return_socket, NULL, parameter_data_thread, (void *) &fc2_return_socket); 
+    pthread_create(&images_fc2, NULL, astrometry_data_thread, (void *) &fc2_image_socket);
+    pthread_create(&params_fc2, NULL, parameter_data_thread, (void *) &fc2_return_socket); 
 
     // loop forever, accepting new clients
     client_addr_len = sizeof(struct sockaddr_in); 
@@ -710,7 +710,9 @@ int main(int argc, char * argv[]) {
     }
 
     // Join the listening threads now that everything is dying
-    pthread_join(listen_self, NULL);
+    pthread_join(listen_fc2, NULL);
+    pthread_join(images_fc2, NULL);
+    pthread_join(params_fc2, NULL);
     
     // join threads once the Astrometry thread has closed and terminated
     pthread_join(astro_thread_id, (void **) &(astro_ptr));

@@ -12,14 +12,12 @@
 #include <signal.h>
 #include <errno.h>
 
-#include "sc_data_structures.h"
-
 #define TARGET_INET_FC1 "192.168.1.3"
 #define TARGET_INET_FC2 "192.168.1.4"
 
 // need to choose SC1 or SC2 somehow...
-#define SC1_RECEIVE_PARAM_PORT "4950"
-#define SC2_RECEIVE_PARAM_PORT "4951"
+#define SC1_RECEIVE_PARAM_PORT "4970"
+#define SC2_RECEIVE_PARAM_PORT "4971"
 #define SC1_RECEIVE_SOLVE_PORT "4960"
 #define SC2_RECEIVE_SOLVE_PORT "4961"
 

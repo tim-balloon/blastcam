@@ -18,6 +18,7 @@
 #include "commands.h"
 #include "camera.h"
 #include "lens_adapter.h"
+#include "sc_data_structures.h"
 
 // just a cheapo wrapper function for packing the data into the astrometry packet for the thread
 static int populate_astrometry_packet(struct mcp_astrometry * packet_data) {
@@ -95,7 +96,7 @@ void *astrometry_data_thread(void *args) {
     } else if (!strcmp(socket_target->ipAddr, FC2_IP_ADDR)) {
         which_fc = 1;
         snprintf(message_str, sizeof(message_str), "%s", "FC2 astrometry thread");
-        blast_info("Astrometry socket pointed at FC2\n");
+        printf("Astrometry socket pointed at FC2\n");
     } else {
         printf("IP provided is %s, expected is %s or %s\n", socket_target->ipAddr, FC1_IP_ADDR, FC2_IP_ADDR);
         printf("Invalid ip target for star camera\n");
@@ -109,7 +110,7 @@ void *astrometry_data_thread(void *args) {
         hints.ai_socktype = SOCK_DGRAM;
         // fill out address info and return if it fails.
         if ((returnval = getaddrinfo(socket_target->ipAddr, socket_target->port, &hints, &servinfo)) != 0) {
-            blast_err("getaddrinfo: %s\n", gai_strerror(returnval));
+            printf("getaddrinfo: %s\n", gai_strerror(returnval));
             return NULL;
         }
         // now we make a socket with this info
@@ -156,7 +157,10 @@ void *astrometry_data_thread(void *args) {
                 printf("Target destination differs from thread target.\n");
             }
         } else {
-            printf("Astrometry packet could not be packed...\n");
+            if (image_solved[which_fc] != 0)
+            {
+                printf("Astrometry packet could not be packed...\n");
+            }
         }
         usleep(100000);
     }
@@ -185,7 +189,7 @@ void *parameter_data_thread(void *args) {
         printf("Parameter socket pointed at FC1\n");
     } else if (!strcmp(socket_target->ipAddr, FC2_IP_ADDR)) {
         snprintf(message_str, sizeof(message_str), "%s", "FC2 parameter thread");
-        blast_info("Parameter socket pointed at FC2\n");
+        printf("Parameter socket pointed at FC2\n");
     } else {
         printf("IP provided is %s, expected is %s or %s\n", socket_target->ipAddr, FC1_IP_ADDR, FC2_IP_ADDR);
         printf("Invalid ip target for star camera\n");
@@ -199,7 +203,7 @@ void *parameter_data_thread(void *args) {
         hints.ai_socktype = SOCK_DGRAM;
         // fill out address info and return if it fails.
         if ((returnval = getaddrinfo(socket_target->ipAddr, socket_target->port, &hints, &servinfo)) != 0) {
-            blast_err("getaddrinfo: %s\n", gai_strerror(returnval));
+            printf("getaddrinfo: %s\n", gai_strerror(returnval));
             return NULL;
         }
         // now we make a socket with this info

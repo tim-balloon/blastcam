@@ -31,6 +31,7 @@ IMAGE_FILE_PARAMS ImageFileParams;
 SENSORINFO sensorInfo;
 
 // global variables
+int image_solved[2] = {0};
 int send_data = 0;
 int taking_image = 0;
 int default_focus_photos = 3;
@@ -1334,7 +1335,7 @@ int doCameraAndAstrometry() {
     }
 
     // testing pictures that have already been taken
-    /* if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
+    if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
                          &memory) == 1) {
         if (verbose) {
             printf("Successfully loaded test picture.\n");
@@ -1344,7 +1345,7 @@ int doCameraAndAstrometry() {
         // can't solve without a picture to solve on!
         usleep(1000000);
         return -1;
-    } */
+    }
 
     // find the blobs in the image
     blob_count = findBlobs(memory, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 

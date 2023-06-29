@@ -1,6 +1,6 @@
 // sc data structures
 
-#define SC1_RECEIVE_PARAM_PORT "4950"
+#define SC1_RECEIVE_PARAM_PORT "4970"
 #define SC1_RECEIVE_IMAGE_PORT "4960"
 #define SC1_COMMAND_PORT_FC1 "4950"
 #define SC1_COMMAND_PORT_FC2 "4951"
