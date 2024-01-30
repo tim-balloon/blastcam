@@ -1320,24 +1320,27 @@ int doCameraAndAstrometry() {
     }
 
     // take an image
-    if (verbose) {
-         printf("\n> Taking a new image...\n\n");
-    }
 
     taking_image = 1;
     // Ian Lowe, 1/9/24, adding new logic to look for a trigger from a FC or sleep instead
     if (all_trigger_params.trigger_mode == 1) {
-        while (all_trigger_params.trigger == 0)
+        while (all_trigger_params.trigger == 0 || shutting_down == 0)
         {
             usleep(all_trigger_params.trigger_timeout_us); // default sleep 100µs while we wait for triggers
         }
         all_trigger_params.trigger = 0; // set the trigger to 0 now that we are going to take an image
+        if (verbose) {
+            printf("\n> Taking a new image...\n\n");
+        }
         if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
             const char * last_error_str = printCameraError();
             printf("Failed to capture new image: %s\n", last_error_str);
         }
     }
     else {
+        if (verbose) {
+            printf("\n> Taking a new image...\n\n");
+        }
         if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
             const char * last_error_str = printCameraError();
             printf("Failed to capture new image: %s\n", last_error_str);
