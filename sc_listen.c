@@ -119,15 +119,9 @@ void *get_in_addr(struct sockaddr *sa)
 // lock that prevents multiple clients from overwriting command data 1 in use 0 free
 // int cancelling_auto_focus = 0;
 // flag to stop auto focus mid attempt
-
 void process_command_packet(struct star_cam_capture data){
-    // dummy variable until I have a structure or 3 to actually modify
-    int dummy;
     command_lock = 1; // I am using these now
     // Here we check for in charge
-    printf("Processing command data packet from FC%d\n", data.fc);
-    printf("in charge received as %d\n", data.inCharge);
-    printf("lon is %lf\n", data.longitude);
     if (data.inCharge == 1)
     {
         if (data.update_logOdds == 1)
@@ -334,6 +328,16 @@ void process_command_packet(struct star_cam_capture data){
                     "current auto-focus process, so ignore lens " 
                     "commands.\n");
         }
+        if (data.update_trigger_mode == 1)
+        {
+            printf("Received update to TRIGGER MODE parameter\n");
+            all_trigger_params.trigger_mode = data.trigger_mode;
+        }
+        if (data.update_trigger_timeout_us == 1)
+        {
+            printf("Received update to TRIGGER TIMEOUT parameter\n");
+            all_trigger_params.trigger_timeout_us = data.trigger_timeout_us;
+        }
         printf("Packet from FC%d processed.\n",data.fc);
     } else {
         printf("Commands received from not in charge computer, ignoring them...\n");
@@ -442,6 +446,137 @@ void *listen_thread(void *args){
             }
         } else {
             process_command_packet(*socket_target->camera_commands);
+        }
+        if (thread_comms.reset_listen == 1)
+        {
+            first_time = 1;
+            freeaddrinfo(servinfo);
+            close(sockfd);
+        } else
+        {
+            usleep(200000);
+        }
+    }
+    freeaddrinfo(servinfo);
+    close(sockfd);
+    // set status to 0 (dead) if we end
+    printf("Socket dying\n");
+    set_status(socket_target->ipAddr, socket_target->port, 0);
+    return NULL;
+}
+
+void process_trigger_packet(struct star_cam_trigger data){
+    if (data.incharge == 1)
+    {
+        all_trigger_params.trigger = data.trigger; // set the trigger value to the packet trigger value
+    }
+    else
+    {
+        printf("Commands received from not in charge computer, ignoring them...\n");
+        return;
+    }
+    return;
+}
+
+void * trigger_thread(void * args) {
+    struct socket_data * socket_target = args;
+    struct star_cam_trigger data;
+    int listen_target;
+    int first_time = 1;
+    int sockfd;
+    struct addrinfo hints, *servinfo, *servinfoCheck;
+    int returnval;
+    int numbytes;
+    struct sockaddr_storage their_addr;
+    char message_str[40];
+    socklen_t addr_len;
+    char ipAddr[INET_ADDRSTRLEN];
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; // set to AF_INET to use IPv4
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_flags = AI_PASSIVE; // use my IP
+    int err;
+    if (!strcmp(socket_target->ipAddr,TARGET_INET_FC1))
+    {
+        printf("Listening socket pointed at FC1\n");
+        sprintf(message_str,"%s","FC1 listening thread");
+        listen_target = 0;
+        sock_status.fc1_listen_status = 1;
+    } else if (!strcmp(socket_target->ipAddr,TARGET_INET_FC2)) {
+        printf("Listening socket pointed at FC2\n");
+        sprintf(message_str,"%s","FC2 listening thread");
+        listen_target = 1;
+        sock_status.fc2_listen_status = 1;
+    } else if (!strcmp(socket_target->ipAddr,TARGET_INET_SELF)) {
+        printf("Listening socket pointed at self\n");
+        sprintf(message_str,"%s","Self listening thread");
+        listen_target = 2;
+        sock_status.self_listen_status = 1;
+    } else {
+        printf("Invalid IP target for data source\n");
+        return NULL;
+    }
+    // Fix all this here
+    while (!thread_comms.stop_listening[listen_target] && !shutting_down)
+    {
+        if (first_time)
+        {
+            first_time = 0;
+            if ((returnval = getaddrinfo(NULL, socket_target->port, &hints, &servinfo)) != 0) {
+                printf("getaddrinfo: %s\n", gai_strerror(returnval));
+                // set status to 0 (dead) if this fails
+                set_status(socket_target->ipAddr, socket_target->port, 0);
+                return NULL;
+            }
+
+            // loop through all the results and bind to the first we can
+            for(servinfoCheck = servinfo; servinfoCheck != NULL; servinfoCheck = servinfoCheck->ai_next) {
+                if ((sockfd = socket(servinfoCheck->ai_family, servinfoCheck->ai_socktype,
+                        servinfoCheck->ai_protocol)) == -1) {
+                    perror("listener: socket");
+                    continue;
+                }
+
+                if (bind(sockfd, servinfoCheck->ai_addr, servinfoCheck->ai_addrlen) == -1) {
+                    close(sockfd);
+                    // set status to 0 (dead) if this fails
+                    set_status(socket_target->ipAddr, socket_target->port, 0);
+                    perror("listener: bind");
+                    continue;
+                }
+
+                break;
+            }
+
+            if (servinfoCheck == NULL) {
+                // set status to 0 (dead) if this fails
+                set_status(socket_target->ipAddr, socket_target->port, 0);
+                fprintf(stderr, "listener: failed to bind socket\n");
+                return NULL;
+            }
+
+            struct timeval read_timeout;
+            read_timeout.tv_sec = 0;
+            read_timeout.tv_usec = 500000;
+            setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &read_timeout, sizeof read_timeout);
+            // now we set up the print statement vars
+            // need to cast the socket address to an INET still address
+            struct sockaddr_in *ipv = (struct sockaddr_in *)servinfo->ai_addr;
+            // then pass the pointer to translation and put it in a string
+            inet_ntop(AF_INET,&(ipv->sin_addr),ipAddr,INET_ADDRSTRLEN);
+            printf("Recvfrom target is: %s\n", socket_target->ipAddr);
+        }
+        numbytes = recvfrom(sockfd, socket_target->camera_trigger, sizeof(struct star_cam_trigger)+1 , 0,(struct sockaddr *)&their_addr, &addr_len);
+        if ( numbytes == -1) {
+            err = errno;
+            if (err != EAGAIN)
+            {
+                printf("Errno is %d\n", err);
+                printf("Error is %s\n", strerror(err));
+                perror("Recvfrom");
+            }
+        } else {
+            process_trigger_packet(*socket_target->camera_trigger);
         }
         if (thread_comms.reset_listen == 1)
         {

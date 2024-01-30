@@ -201,9 +201,15 @@ void * updateAstrometry() {
             printf("Did not solve or timeout of Astrometry properly, or did not"
                    " auto-focus properly.\n");
         }
-        printf("Sleeping between frames...\n");
-        int timeBetweenFramesSec = 5;
-        sleep(timeBetweenFramesSec);
+        if (all_trigger_params.trigger_mode == 0)
+        // in the no-trigger mode we just sleep for 5 seconds
+        // in triggered mode we don't want to sleep, triggers handle
+        // all of the waiting time that we need with a sleep loop
+        {
+            printf("Sleeping between frames...\n");
+            int timeBetweenFramesSec = 5;
+            sleep(timeBetweenFramesSec);
+        }
     }
     // when we are shutting down or exiting, close Astrometry engine and solver
     closeAstrometry();
@@ -420,7 +426,18 @@ int main(int argc, char * argv[]) {
     sprintf(fc2Socket_listen.port,"%s",SC1_COMMAND_PORT_FC2);
     fc2Socket_listen.image_solutions = NULL;
     fc2Socket_listen.camera_params = NULL;
+    fc2Socket_listen.camera_trigger = NULL;
     fc2Socket_listen.camera_commands = &FC2_in;
+
+    // setup the software trigger thread here
+    pthread_t listen_fc2_trigger;
+    sprintf(fc2Socket_trigger.ipAddr,"%s",FC2_IP_ADDR);
+    sprintf(fc2Socket_trigger.port,"%s",SC1_TRIGGER_PORT_FC2);
+    fc2Socket_trigger.image_solutions = NULL;
+    fc2Socket_trigger.camera_params = NULL;
+    fc2Socket_trigger.camera_trigger = &FC2_trigger;
+    fc2Socket_trigger.camera_commands = NULL;
+
 
     // setups MCP data return threads here
     pthread_t params_fc2;
@@ -428,12 +445,14 @@ int main(int argc, char * argv[]) {
     sprintf(fc2_return_socket.port,"%s", SC1_RECEIVE_PARAM_PORT);
     fc2_return_socket.image_solutions = NULL;
     fc2_return_socket.camera_params = &FC2_return;
+    fc2_return_socket.camera_trigger = NULL;
     fc2_return_socket.camera_commands = NULL;
     pthread_t images_fc2;
     sprintf(fc2_image_socket.ipAddr, "%s", FC2_IP_ADDR);
     sprintf(fc2_image_socket.port, "%s", SC1_RECEIVE_SOLVE_PORT);
     fc2_image_socket.image_solutions = &FC2_astro;
     fc2_image_socket.camera_params = NULL;
+    fc2_image_socket.camera_trigger = NULL;
     fc2_image_socket.camera_commands = NULL;
     
 
@@ -660,6 +679,9 @@ int main(int argc, char * argv[]) {
 
     // Create the listening threads for MCP
     pthread_create(&listen_fc2, NULL, listen_thread, (void *) &fc2Socket_listen);
+
+    // Create the trigger listening threads
+    pthread_create(&listen_fc2_trigger, NULL, trigger_thread, (void *) &fc2Socket_trigger);
 
     // Create the talking threads for MCP
     pthread_create(&images_fc2, NULL, astrometry_data_thread, (void *) &fc2_image_socket);

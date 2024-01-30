@@ -38,6 +38,10 @@ struct star_cam_return FC1_return;
 struct star_cam_return FC2_return;
 struct mcp_astrometry FC1_astro;
 struct mcp_astrometry FC2_astro;
+struct socket_data fc1Socket_trigger;
+struct socket_data fc2Socket_trigger;
+struct star_cam_trigger FC1_trigger;
+struct star_cam_trigger FC2_trigger;
 
 
 void set_status(char * ip, char * listen, int value);
@@ -45,3 +49,5 @@ int aperture_allowed(float aperture_value);
 int check_AF_params(struct star_cam_capture data);
 void process_command_packet(struct star_cam_capture data);
 void *listen_thread(void *args);
+void * trigger_thread(void* args);
+void process_trigger_packet(struct star_cam_trigger data);

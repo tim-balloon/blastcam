@@ -4,6 +4,8 @@
 #define SC1_RECEIVE_IMAGE_PORT "4960"
 #define SC1_COMMAND_PORT_FC1 "4950"
 #define SC1_COMMAND_PORT_FC2 "4951"
+#define SC1_TRIGGER_PORT_FC1 "4952"
+#define SC1_TRIGGER_PORT_FC2 "4953"
 
 #define FC1_IP_ADDR "192.168.1.3"
 #define FC2_IP_ADDR "192.168.1.4"
@@ -117,6 +119,10 @@ struct star_cam_capture {
     // 8 = unique star spacing
     // min. pixel spacing between stars [px]
     // float deltaFocus; // how far to move the focus from current pos (maybe)
+    int update_trigger_mode;
+    int trigger_mode; // 0 for auto, 1 for software triggered
+    int update_trigger_timeout_us;
+    int trigger_timeout_us; // timeout between trigger checks in µs default 100
 };
 
 struct star_cam_return {
@@ -141,6 +147,8 @@ struct star_cam_return {
     int makeHP; // set to 20 to do it, makes a new static hot pixel map
     int useHP; // use the hot pixel map to mask bad pixels
     float blobParams[9]; // blobfinding parameters...
+    int trigger_mode; // 0 for auto, 1 for software triggered
+    int trigger_timeout_us; // timeout between trigger checks in µs default 100
 };
 
 struct socket_data {
@@ -149,4 +157,12 @@ struct socket_data {
     struct star_cam_capture * camera_commands;
     struct star_cam_return * camera_params;
     struct mcp_astrometry * image_solutions;
+    struct star_cam_trigger * camera_trigger;
+};
+
+struct star_cam_trigger {
+    int fc; // whoami
+    char target[16]; // who (ipaddr) does this go to
+    int incharge; // did the in charge computer send this?
+    int trigger; // sending a 1 tells the SC to take an image
 };

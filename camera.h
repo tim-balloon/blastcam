@@ -19,6 +19,14 @@ extern int taking_image;
 extern int image_solved[2];
 extern struct mcp_astrometry mcp_astro;
 
+/* triggering parameters */
+struct trigger_params
+{
+    int trigger_mode; // 0 is auto triggered with a sleep, 1 waits for a trigger
+    int trigger; // 1 to take image if trigger mode is 1
+    int trigger_timeout_us; // time in µs to wait between checks for a trigger
+};
+
 
 /* Blob-finding parameters */
 #pragma pack(push, 1)
@@ -38,6 +46,7 @@ struct blob_params {
 #pragma pack(pop)
 
 extern struct blob_params all_blob_params;
+extern struct trigger_params all_trigger_params;
 
 int setCameraParams();
 void setSaveImage();

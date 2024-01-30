@@ -65,6 +65,13 @@ struct blob_params all_blob_params = {
     .use_static_hp_mask = 1,       
 };
 
+/* Trigger parameters global structure (defined in camera.h) */
+struct trigger_params all_trigger_params = {
+    .trigger_timeout_us = 100, // 100 µs between checks
+    .trigger = 0, // not starting off triggered
+    .trigger_mode = 0, // default to 
+};
+
 /* Helper function to determine if a year is a leap year (2020 is a leap year).
 ** Input: The year.
 ** Output: A flag indicating the input year is a leap year or not.
@@ -1318,11 +1325,26 @@ int doCameraAndAstrometry() {
     }
 
     taking_image = 1;
-    if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
-        const char * last_error_str = printCameraError();
-        printf("Failed to capture new image: %s\n", last_error_str);
-    } 
+    // Ian Lowe, 1/9/24, adding new logic to look for a trigger from a FC or sleep instead
+    if (all_trigger_params.trigger_mode == 1) {
+        while (all_trigger_params.trigger == 0)
+        {
+            usleep(all_trigger_params.trigger_timeout_us); // default sleep 100µs while we wait for triggers
+        }
+        all_trigger_params.trigger = 0; // set the trigger to 0 now that we are going to take an image
+        if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
+            const char * last_error_str = printCameraError();
+            printf("Failed to capture new image: %s\n", last_error_str);
+        }
+    }
+    else {
+        if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
+            const char * last_error_str = printCameraError();
+            printf("Failed to capture new image: %s\n", last_error_str);
+        } 
+    }
     taking_image = 0;
+
     gettimeofday(&tv, NULL);
     photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
     all_astro_params.photo_time = photo_time;
@@ -1361,7 +1383,7 @@ int doCameraAndAstrometry() {
                            &star_y, &star_mags, output_buffer);
         all_blob_params.high_pass_filter = 0;
     }
-
+    // New 3x3 flux weighted centroiding algorithm from 2023 added below
     // temp variable to store the position of each blob in the flattened array
     int image_locs[9];
     // arrays of positions to centroid with
