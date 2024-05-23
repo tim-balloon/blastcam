@@ -435,7 +435,7 @@ void *listen_thread(void *args){
             inet_ntop(AF_INET,&(ipv->sin_addr),ipAddr,INET_ADDRSTRLEN);
             printf("Recvfrom target is: %s\n", socket_target->ipAddr);
         }
-        numbytes = recvfrom(sockfd, socket_target->camera_commands, sizeof(struct star_cam_capture)+1 , 0,(struct sockaddr *)&their_addr, &addr_len);
+        numbytes = recvfrom(sockfd, socket_target->camera_commands, sizeof(struct star_cam_capture), 0,(struct sockaddr *)&their_addr, &addr_len);
         if ( numbytes == -1) {
             err = errno;
             if (err != EAGAIN)
@@ -557,7 +557,7 @@ void * trigger_thread(void * args) {
 
             struct timeval read_timeout;
             read_timeout.tv_sec = 0;
-            read_timeout.tv_usec = 500000;
+            read_timeout.tv_usec = 5000;
             setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &read_timeout, sizeof read_timeout);
             // now we set up the print statement vars
             // need to cast the socket address to an INET still address
@@ -566,7 +566,7 @@ void * trigger_thread(void * args) {
             inet_ntop(AF_INET,&(ipv->sin_addr),ipAddr,INET_ADDRSTRLEN);
             printf("Recvfrom target is: %s\n", socket_target->ipAddr);
         }
-        numbytes = recvfrom(sockfd, socket_target->camera_trigger, sizeof(struct star_cam_trigger)+1 , 0,(struct sockaddr *)&their_addr, &addr_len);
+        numbytes = recvfrom(sockfd, socket_target->camera_trigger, sizeof(struct star_cam_trigger) , 0,(struct sockaddr *)&their_addr, &addr_len);
         if ( numbytes == -1) {
             err = errno;
             if (err != EAGAIN)
@@ -585,7 +585,7 @@ void * trigger_thread(void * args) {
             close(sockfd);
         } else
         {
-            usleep(200000);
+            usleep(1000);
         }
     }
     freeaddrinfo(servinfo);

@@ -1324,7 +1324,7 @@ int doCameraAndAstrometry() {
     taking_image = 1;
     // Ian Lowe, 1/9/24, adding new logic to look for a trigger from a FC or sleep instead
     if (all_trigger_params.trigger_mode == 1) {
-        while (all_trigger_params.trigger == 0 || shutting_down == 0)
+        while (all_trigger_params.trigger == 0 && shutting_down != 1)
         {
             usleep(all_trigger_params.trigger_timeout_us); // default sleep 100µs while we wait for triggers
         }
