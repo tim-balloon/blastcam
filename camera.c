@@ -7,12 +7,17 @@
 #include <ueye.h>
 #include <stdbool.h>
 #include <pthread.h>  
+#include <sys/time.h>
 
 #include "camera.h"
 #include "astrometry.h"
 #include "commands.h"
 #include "lens_adapter.h"
 #include "matrix.h"
+#include "sc_data_structures.h"
+
+#define MIN_BLOBS 4
+#define MAX_BLOBS 9999
 
 void merge(double A[], int p, int q, int r, double X[],double Y[]);
 void part(double A[], int p, int r, double X[], double Y[]);
@@ -26,6 +31,7 @@ IMAGE_FILE_PARAMS ImageFileParams;
 SENSORINFO sensorInfo;
 
 // global variables
+int image_solved[2] = {0};
 int send_data = 0;
 int taking_image = 0;
 int default_focus_photos = 3;
@@ -47,15 +53,23 @@ int prev_dynamic_hp;
 struct blob_params all_blob_params = {
     .spike_limit = 3,             
     .dynamic_hot_pixels = 1,       
-    .r_smooth = 2,                 
-    .high_pass_filter = 0,         
+    // .r_smooth = 2,   
+    .r_smooth = 1,              
+    .high_pass_filter = 1,         
     .r_high_pass_filter = 10,     
     .centroid_search_border = 1,  
-    .filter_return_image = 0,      
+    .filter_return_image = 0,     
     .n_sigma = 2.0,               
     .unique_star_spacing = 15,    
     .make_static_hp_mask = 0,     
     .use_static_hp_mask = 1,       
+};
+
+/* Trigger parameters global structure (defined in camera.h) */
+struct trigger_params all_trigger_params = {
+    .trigger_timeout_us = 100, // 100 µs between checks
+    .trigger = 0, // not starting off triggered
+    .trigger_mode = 0, // default to 
 };
 
 /* Helper function to determine if a year is a leap year (2020 is a leap year).
@@ -728,6 +742,9 @@ int findBlobs(char * input_buffer, int w, int h, double ** star_x,
     static int first_time = 1;
     static double * ic = NULL, * ic2 = NULL;
     static int num_blobs_alloc = 0;
+    FILE *fp;
+    // test code to grab real filtered images if we want.
+    // fp = fopen("/home/starcam/filtered.txt","w");
 
     // allocate the proper amount of storage space to start
     if (first_time) {
@@ -794,6 +811,27 @@ int findBlobs(char * input_buffer, int w, int h, double ** star_x,
     // lowpass filter the image - reduce noise.
     boxcarFilterImage(input_buffer, i0, j0, i1, j1, all_blob_params.r_smooth, 
                       ic);
+        // test code to grab real filtered images if we want.
+    /* for (int j = 0; j < CAMERA_HEIGHT; j++)
+    {
+        for (int i = 0; i < CAMERA_WIDTH; i++)
+        {   
+            int ind = CAMERA_WIDTH*j + i;
+            fprintf(fp, "%lf", ic[ind]);
+            if (i == CAMERA_WIDTH-1)
+            {
+                fprintf(fp,"%s","\n");
+            } else {
+                fprintf(fp,"%s",",");
+            }
+            
+        }
+        
+    }
+    
+    fflush(fp);
+    fclose(fp); */
+
 
     // only high-pass filter full frames
     if (all_blob_params.high_pass_filter) {       
@@ -884,8 +922,8 @@ int findBlobs(char * input_buffer, int w, int h, double ** star_x,
     // find the blobs 
     double ic0;
     int blob_count = 0;
-    for (int j = j0 + b; j < j1-b-1; j++) {
-        for (int i = i0 + b; i < i1-b-1; i++) {
+    for (int j = j0 + b + 1; j < j1-b-2; j++) {
+        for (int i = i0 + b + 1; i < i1-b-2; i++) {
             // if pixel exceeds threshold
             if ((double) ic[i + j*w] > mean + all_blob_params.n_sigma*sigma) {
                 ic0 = ic[i + j*w];
@@ -1077,6 +1115,8 @@ int doCameraAndAstrometry() {
     static int num_focus_pos;
     static int * blob_mags;
     int blob_count;
+    struct timeval tv;
+    double photo_time;
     char datafile[100], buff[100], date[256];
     // static: af_filename only defined on first autofocus pass, but in subsequent calls to doCameraAndAstrometry() gets passed to calculateOptimalFocus()
     static char af_filename[256];
@@ -1280,16 +1320,37 @@ int doCameraAndAstrometry() {
     }
 
     // take an image
-    if (verbose) {
-         printf("\n> Taking a new image...\n\n");
-    }
 
     taking_image = 1;
-    if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
-        const char * last_error_str = printCameraError();
-        printf("Failed to capture new image: %s\n", last_error_str);
-    } 
+    // Ian Lowe, 1/9/24, adding new logic to look for a trigger from a FC or sleep instead
+    if (all_trigger_params.trigger_mode == 1) {
+        while (all_trigger_params.trigger == 0 && shutting_down != 1)
+        {
+            usleep(all_trigger_params.trigger_timeout_us); // default sleep 100µs while we wait for triggers
+        }
+        all_trigger_params.trigger = 0; // set the trigger to 0 now that we are going to take an image
+        if (verbose) {
+            printf("\n> Taking a new image...\n\n");
+        }
+        if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
+            const char * last_error_str = printCameraError();
+            printf("Failed to capture new image: %s\n", last_error_str);
+        }
+    }
+    else {
+        if (verbose) {
+            printf("\n> Taking a new image...\n\n");
+        }
+        if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
+            const char * last_error_str = printCameraError();
+            printf("Failed to capture new image: %s\n", last_error_str);
+        } 
+    }
     taking_image = 0;
+
+    gettimeofday(&tv, NULL);
+    photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
+    all_astro_params.photo_time = photo_time;
 
     // get the image from memory
     if (is_GetActSeqBuf(camera_handle, &buffer_num, &waiting_mem, &memory) 
@@ -1299,21 +1360,80 @@ int doCameraAndAstrometry() {
     }
 
     // testing pictures that have already been taken
-    // if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
-    //                      &memory) == 1) {
-    //     if (verbose) {
-    //         printf("Successfully loaded test picture.\n");
-    //     }
-    // } else {
-    //     fprintf(stderr, "Error loading test picture: %s.\n", strerror(errno));
-    //     // can't solve without a picture to solve on!
-    //     usleep(1000000);
-    //     return -1;
-    // }
+    if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
+                         &memory) == 1) {
+        if (verbose) {
+            printf("Successfully loaded test picture.\n");
+        }
+    } else {
+        fprintf(stderr, "Error loading test picture: %s.\n", strerror(errno));
+        // can't solve without a picture to solve on!
+        usleep(1000000);
+        return -1;
+    }
 
     // find the blobs in the image
     blob_count = findBlobs(memory, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 
                            &star_y, &star_mags, output_buffer);
+    // Add some logic to automatically try filtering the image
+    // if the number of blobs found is not in some nice passband
+    
+    if (blob_count < MIN_BLOBS || blob_count > MAX_BLOBS)
+    {
+        printf("Couldn't find an appropriate number of blobs, filtering image...\n");
+        all_blob_params.high_pass_filter = 1;
+        blob_count = findBlobs(memory, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 
+                           &star_y, &star_mags, output_buffer);
+        all_blob_params.high_pass_filter = 0;
+    }
+    // New 3x3 flux weighted centroiding algorithm from 2023 added below
+    // temp variable to store the position of each blob in the flattened array
+    int image_locs[9];
+    // arrays of positions to centroid with
+    double x_locs[9];
+    double y_locs[9];
+    // nowq we loop over blobcount to grab positions 
+    for (int i = 0; i < blob_count; i++)
+    {   
+        // printf("made it in on iteration %d of %d\n", i+1, blob_count);
+        double sum = 0; // variable to store total flux
+        double new_x = 0; // new centroided locations 
+        double new_y = 0;
+        // grab the locations on the unfiltered map
+        image_locs[0] = (int) ((star_x[i]-1)+CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[i]+1));
+        image_locs[1] = (int) ((star_x[i]  )+CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[i]+1));
+        image_locs[2] = (int) ((star_x[i]+1)+CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[i]+1));
+        image_locs[3] = (int) ((star_x[i]-1)+CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[i]  ));
+        image_locs[4] = (int) ((star_x[i]  )+CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[i]  ));
+        image_locs[5] = (int) ((star_x[i]+1)+CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[i]  ));
+        image_locs[6] = (int) ((star_x[i]-1)+CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[i]-1));
+        image_locs[7] = (int) ((star_x[i]  )+CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[i]-1));
+        image_locs[8] = (int) ((star_x[i]+1)+CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[i]-1));
+        for (int j = 0; j < 9; j++)
+        {
+            sum += (double) memory[image_locs[j]]; // get the total flux in the 3x3
+        }
+        // grab the actual x + y positions in 2d instead of flattened
+        x_locs[0] = x_locs[3] = x_locs[6] = star_x[i]-1;
+        x_locs[1] = x_locs[4] = x_locs[7] = star_x[i]  ;
+        x_locs[2] = x_locs[5] = x_locs[8] = star_x[i]+1;
+        y_locs[0] = y_locs[1] = y_locs[2] = star_y[i]+1;
+        y_locs[3] = y_locs[4] = y_locs[5] = star_y[i]  ;
+        y_locs[6] = y_locs[7] = y_locs[8] = star_y[i]-1;
+        // flux weight the locations
+        for (int j2 = 0; j2 < 9; j2++)
+        {
+            x_locs[j2] = x_locs[j2]*memory[image_locs[j2]]/sum;
+            y_locs[j2] = y_locs[j2]*memory[image_locs[j2]]/sum;
+        }
+        for (int j3 = 0; j3 < 9; j3++)
+        {
+            new_x += x_locs[j3];
+            new_y += y_locs[j3];
+        }
+        star_x[i] = new_x;
+        star_y[i] = new_y;
+    }
 
     // make kst display the filtered image 
     memcpy(memory, output_buffer, CAMERA_WIDTH*CAMERA_HEIGHT); 
@@ -1501,6 +1621,10 @@ int doCameraAndAstrometry() {
         if (lostInSpace(star_x, star_y, star_mags, blob_count, tm_info, 
                         datafile) != 1) {
             printf("\n(*) Could not solve Astrometry.\n");
+        } else {
+            // let the astro thread know to send data
+            image_solved[0] = 1;
+            image_solved[1] = 1;
         }
 
         // get current time right after solving

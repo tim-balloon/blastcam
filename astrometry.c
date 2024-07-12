@@ -19,6 +19,7 @@
 #include "astrometry.h"
 #include "lens_adapter.h"
 #include "commands.h"
+#include "sc_data_structures.h"
 
 #define _USE_MATH_DEFINES
 /* Longitude and latitude constants (deg) */
@@ -295,8 +296,10 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
 		mcp_astro.ra_j2000 = ra;
 		mcp_astro.dec_observed = dob*(180.0/M_PI);
 		mcp_astro.ra_observed = rob*(180.0/M_PI);
-		mcp_astro.sigma_pointing_as = sigma_pointing_as;
+		mcp_astro.image_rms = sigma_pointing_as;
 		// update astro struct with telemetry
+		all_astro_params.dec_j2000 = dec;
+		all_astro_params.ra_j2000 = ra;
 		all_astro_params.ir = ir;
 		all_astro_params.ra = rob*(180.0/M_PI);
 		all_astro_params.dec = dob*(180.0/M_PI);
