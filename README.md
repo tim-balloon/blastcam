@@ -56,6 +56,11 @@ Display the Star Camera computer network information and the size of the telemet
 
 Display the help message.
 
+Example
+-------
+
+`sudo ./commands --camhandle 1 --serial /dev/ttyLens1port8001 --port 8001 --verbose`
+
 Support
 -------
 

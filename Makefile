@@ -9,4 +9,4 @@ debug: commands.c commands.h camera.c camera.h lens_adapter.c lens_adapter.h ast
 .PHONY: clean
 
 clean:
-	rm -f *.o test_camera
+	rm -f *.o commands

@@ -412,7 +412,7 @@ static int am_i_SC1(void)
     char buffer[4];
 
     if (gethostname(buffer, 3) == -1 && errno != ENAMETOOLONG) {
-      perror(err, "System: Unable to get hostname");
+      perror("System: Unable to get hostname");
     }
 
     return ((buffer[0] == 's') && (buffer[1] == 'c') && (buffer[2] == '1')) ? 1 : 0;
@@ -474,7 +474,7 @@ int main(int argc, char * argv[]) {
     i_am_SC1 = am_i_SC1();
     if (i_am_SC1)
     {
-        printf("I am SC1 and am setting up comms to FC1 as such")
+        printf("I am SC1 and am setting up comms to FC1 as such");
         // set up the parameter comm socket on SC1 port
         sprintf(fc1_return_socket.ipAddr, "%s", FC1_IP_ADDR);
         sprintf(fc1_return_socket.port,"%s", SC1_RECEIVE_PARAM_PORT);
@@ -483,7 +483,7 @@ int main(int argc, char * argv[]) {
         sprintf(fc1_image_socket.port, "%s", SC1_RECEIVE_SOLVE_PORT);
     } else if (!i_am_SC1)
     {
-        printf("I am SC2 and am setting up comms to FC1 as such")
+        printf("I am SC2 and am setting up comms to FC1 as such");
         // set up the parameter comm socket on SC2 port
         sprintf(fc1_return_socket.ipAddr, "%s", FC1_IP_ADDR);
         sprintf(fc1_return_socket.port,"%s", SC2_RECEIVE_PARAM_PORT);
@@ -504,7 +504,7 @@ int main(int argc, char * argv[]) {
 
     if (i_am_SC1)
     {
-        printf("I am SC1 and am setting up comms to FC2 as such")
+        printf("I am SC1 and am setting up comms to FC2 as such");
         // set up the parameter comm socket on SC1 port
         sprintf(fc2_return_socket.ipAddr, "%s", FC2_IP_ADDR);
         sprintf(fc2_return_socket.port,"%s", SC1_RECEIVE_PARAM_PORT);
@@ -513,7 +513,7 @@ int main(int argc, char * argv[]) {
         sprintf(fc2_image_socket.port, "%s", SC1_RECEIVE_SOLVE_PORT);
     } else if (!i_am_SC1)
     {
-        printf("I am SC2 and am setting up comms to FC2 as such")
+        printf("I am SC2 and am setting up comms to FC2 as such");
         // set up the parameter comm socket on SC2 port
         sprintf(fc2_return_socket.ipAddr, "%s", FC2_IP_ADDR);
         sprintf(fc2_return_socket.port,"%s", SC2_RECEIVE_PARAM_PORT);
