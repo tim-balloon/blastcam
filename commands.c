@@ -405,7 +405,18 @@ void * processClient(void * for_client_thread) {
     pthread_exit(&client_thread_ret);
 }
 
+/* Polarity crisis: am I north or south? */
+/* Right now fc2 == south */
+static int am_i_SC1(void)
+{
+    char buffer[4];
 
+    if (gethostname(buffer, 3) == -1 && errno != ENAMETOOLONG) {
+      perror(err, "System: Unable to get hostname");
+    }
+
+    return ((buffer[0] == 's') && (buffer[1] == 'c') && (buffer[2] == '1')) ? 1 : 0;
+}
 
 
 /* Driver function for Star Camera operation.
@@ -421,18 +432,34 @@ int main(int argc, char * argv[]) {
     signal(SIGPIPE, SIG_IGN);
 
     // setup the MCP monitoring thread here
+    pthread_t listen_fc1;
+    sprintf(fc2Socket_listen.ipAddr,"%s",FC1_IP_ADDR);
+    sprintf(fc2Socket_listen.port,"%s",SC_COMMAND_PORT_FC1);
+    fc2Socket_listen.image_solutions = NULL;
+    fc2Socket_listen.camera_params = NULL;
+    fc2Socket_listen.camera_trigger = NULL;
+    fc2Socket_listen.camera_commands = &FC1_in;
+
     pthread_t listen_fc2;
     sprintf(fc2Socket_listen.ipAddr,"%s",FC2_IP_ADDR);
-    sprintf(fc2Socket_listen.port,"%s",SC1_COMMAND_PORT_FC2);
+    sprintf(fc2Socket_listen.port,"%s",SC_COMMAND_PORT_FC2);
     fc2Socket_listen.image_solutions = NULL;
     fc2Socket_listen.camera_params = NULL;
     fc2Socket_listen.camera_trigger = NULL;
     fc2Socket_listen.camera_commands = &FC2_in;
 
     // setup the software trigger thread here
+    pthread_t listen_fc1_trigger;
+    sprintf(fc2Socket_trigger.ipAddr,"%s",FC1_IP_ADDR);
+    sprintf(fc2Socket_trigger.port,"%s",SC_TRIGGER_PORT_FC1);
+    fc2Socket_trigger.image_solutions = NULL;
+    fc2Socket_trigger.camera_params = NULL;
+    fc2Socket_trigger.camera_trigger = &FC1_trigger;
+    fc2Socket_trigger.camera_commands = NULL;
+
     pthread_t listen_fc2_trigger;
     sprintf(fc2Socket_trigger.ipAddr,"%s",FC2_IP_ADDR);
-    sprintf(fc2Socket_trigger.port,"%s",SC1_TRIGGER_PORT_FC2);
+    sprintf(fc2Socket_trigger.port,"%s",SC_TRIGGER_PORT_FC2);
     fc2Socket_trigger.image_solutions = NULL;
     fc2Socket_trigger.camera_params = NULL;
     fc2Socket_trigger.camera_trigger = &FC2_trigger;
@@ -440,16 +467,66 @@ int main(int argc, char * argv[]) {
 
 
     // setups MCP data return threads here
+
+    // TODO(Ian): add the logic to change things like "SC1_RECEIVE_PARAM_PORT"
+    // to instead return a port number based on southiam style whoami
+    static int i_am_SC1;
+    i_am_SC1 = am_i_SC1();
+    if (i_am_SC1)
+    {
+        printf("I am SC1 and am setting up comms to FC1 as such")
+        // set up the parameter comm socket on SC1 port
+        sprintf(fc1_return_socket.ipAddr, "%s", FC1_IP_ADDR);
+        sprintf(fc1_return_socket.port,"%s", SC1_RECEIVE_PARAM_PORT);
+        // set up the image data comm socket on SC1 port
+        sprintf(fc1_image_socket.ipAddr, "%s", FC1_IP_ADDR);
+        sprintf(fc1_image_socket.port, "%s", SC1_RECEIVE_SOLVE_PORT);
+    } else if (!i_am_SC1)
+    {
+        printf("I am SC2 and am setting up comms to FC1 as such")
+        // set up the parameter comm socket on SC2 port
+        sprintf(fc1_return_socket.ipAddr, "%s", FC1_IP_ADDR);
+        sprintf(fc1_return_socket.port,"%s", SC2_RECEIVE_PARAM_PORT);
+        // set up the image data comm socket on SC2 port
+        sprintf(fc1_image_socket.ipAddr, "%s", FC1_IP_ADDR);
+        sprintf(fc1_image_socket.port, "%s", SC2_RECEIVE_SOLVE_PORT);
+    }
+    pthread_t params_fc1;
+    fc2_return_socket.image_solutions = NULL;
+    fc2_return_socket.camera_params = &FC1_return;
+    fc2_return_socket.camera_trigger = NULL;
+    fc2_return_socket.camera_commands = NULL;
+    pthread_t images_fc1;
+    fc2_image_socket.image_solutions = &FC1_astro;
+    fc2_image_socket.camera_params = NULL;
+    fc2_image_socket.camera_trigger = NULL;
+    fc2_image_socket.camera_commands = NULL;
+
+    if (i_am_SC1)
+    {
+        printf("I am SC1 and am setting up comms to FC2 as such")
+        // set up the parameter comm socket on SC1 port
+        sprintf(fc2_return_socket.ipAddr, "%s", FC2_IP_ADDR);
+        sprintf(fc2_return_socket.port,"%s", SC1_RECEIVE_PARAM_PORT);
+        // set up the image data comm socket on SC1 port
+        sprintf(fc2_image_socket.ipAddr, "%s", FC2_IP_ADDR);
+        sprintf(fc2_image_socket.port, "%s", SC1_RECEIVE_SOLVE_PORT);
+    } else if (!i_am_SC1)
+    {
+        printf("I am SC2 and am setting up comms to FC2 as such")
+        // set up the parameter comm socket on SC2 port
+        sprintf(fc2_return_socket.ipAddr, "%s", FC2_IP_ADDR);
+        sprintf(fc2_return_socket.port,"%s", SC2_RECEIVE_PARAM_PORT);
+        // set up the image data comm socket on SC2 port
+        sprintf(fc2_image_socket.ipAddr, "%s", FC2_IP_ADDR);
+        sprintf(fc2_image_socket.port, "%s", SC2_RECEIVE_SOLVE_PORT);
+    }
     pthread_t params_fc2;
-    sprintf(fc2_return_socket.ipAddr, "%s", FC2_IP_ADDR);
-    sprintf(fc2_return_socket.port,"%s", SC1_RECEIVE_PARAM_PORT);
     fc2_return_socket.image_solutions = NULL;
     fc2_return_socket.camera_params = &FC2_return;
     fc2_return_socket.camera_trigger = NULL;
     fc2_return_socket.camera_commands = NULL;
     pthread_t images_fc2;
-    sprintf(fc2_image_socket.ipAddr, "%s", FC2_IP_ADDR);
-    sprintf(fc2_image_socket.port, "%s", SC1_RECEIVE_SOLVE_PORT);
     fc2_image_socket.image_solutions = &FC2_astro;
     fc2_image_socket.camera_params = NULL;
     fc2_image_socket.camera_trigger = NULL;

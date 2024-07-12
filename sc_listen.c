@@ -566,7 +566,7 @@ void * trigger_thread(void * args) {
             inet_ntop(AF_INET,&(ipv->sin_addr),ipAddr,INET_ADDRSTRLEN);
             printf("Recvfrom target is: %s\n", socket_target->ipAddr);
         }
-        numbytes = recvfrom(sockfd, socket_target->camera_trigger, sizeof(struct star_cam_trigger) , 0,(struct sockaddr *)&their_addr, &addr_len);
+        numbytes = recvfrom(sockfd, socket_target->camera_trigger, sizeof(struct star_cam_trigger), 0,(struct sockaddr *)&their_addr, &addr_len);
         if ( numbytes == -1) {
             err = errno;
             if (err != EAGAIN)
