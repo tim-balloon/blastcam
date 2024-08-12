@@ -436,7 +436,7 @@ static int am_i_SC1(void)
     char buffer[4];
 
     if (gethostname(buffer, 3) == -1 && errno != ENAMETOOLONG) {
-      perror(err, "System: Unable to get hostname");
+      perror("System: Unable to get hostname");
     }
 
     return ((buffer[0] == 's') && (buffer[1] == 'c') && (buffer[2] == '1')) ? 1 : 0;
@@ -457,12 +457,12 @@ int main(int argc, char * argv[]) {
 
     // setup the MCP monitoring thread here
     pthread_t listen_fc1;
-    sprintf(fc2Socket_listen.ipAddr,"%s",FC1_IP_ADDR);
-    sprintf(fc2Socket_listen.port,"%s",SC_COMMAND_PORT_FC1);
-    fc2Socket_listen.image_solutions = NULL;
-    fc2Socket_listen.camera_params = NULL;
-    fc2Socket_listen.camera_trigger = NULL;
-    fc2Socket_listen.camera_commands = &FC1_in;
+    sprintf(fc1Socket_listen.ipAddr,"%s",FC1_IP_ADDR);
+    sprintf(fc1Socket_listen.port,"%s",SC_COMMAND_PORT_FC1);
+    fc1Socket_listen.image_solutions = NULL;
+    fc1Socket_listen.camera_params = NULL;
+    fc1Socket_listen.camera_trigger = NULL;
+    fc1Socket_listen.camera_commands = &FC1_in;
 
     pthread_t listen_fc2;
     sprintf(fc2Socket_listen.ipAddr,"%s",FC2_IP_ADDR);
@@ -474,12 +474,12 @@ int main(int argc, char * argv[]) {
 
     // setup the software trigger thread here
     pthread_t listen_fc1_trigger;
-    sprintf(fc2Socket_trigger.ipAddr,"%s",FC1_IP_ADDR);
-    sprintf(fc2Socket_trigger.port,"%s",SC_TRIGGER_PORT_FC1);
-    fc2Socket_trigger.image_solutions = NULL;
-    fc2Socket_trigger.camera_params = NULL;
-    fc2Socket_trigger.camera_trigger = &FC1_trigger;
-    fc2Socket_trigger.camera_commands = NULL;
+    sprintf(fc1Socket_trigger.ipAddr,"%s",FC1_IP_ADDR);
+    sprintf(fc1Socket_trigger.port,"%s",SC_TRIGGER_PORT_FC1);
+    fc1Socket_trigger.image_solutions = NULL;
+    fc1Socket_trigger.camera_params = NULL;
+    fc1Socket_trigger.camera_trigger = &FC1_trigger;
+    fc1Socket_trigger.camera_commands = NULL;
 
     pthread_t listen_fc2_trigger;
     sprintf(fc2Socket_trigger.ipAddr,"%s",FC2_IP_ADDR);
@@ -498,7 +498,7 @@ int main(int argc, char * argv[]) {
     i_am_SC1 = am_i_SC1();
     if (i_am_SC1)
     {
-        printf("I am SC1 and am setting up comms to FC1 as such")
+        printf("I am SC1 and am setting up comms to FC1 as such\n");
         // set up the parameter comm socket on SC1 port
         sprintf(fc1_return_socket.ipAddr, "%s", FC1_IP_ADDR);
         sprintf(fc1_return_socket.port,"%s", SC1_RECEIVE_PARAM_PORT);
@@ -507,7 +507,7 @@ int main(int argc, char * argv[]) {
         sprintf(fc1_image_socket.port, "%s", SC1_RECEIVE_SOLVE_PORT);
     } else if (!i_am_SC1)
     {
-        printf("I am SC2 and am setting up comms to FC1 as such")
+        printf("I am SC2 and am setting up comms to FC1 as such\n");
         // set up the parameter comm socket on SC2 port
         sprintf(fc1_return_socket.ipAddr, "%s", FC1_IP_ADDR);
         sprintf(fc1_return_socket.port,"%s", SC2_RECEIVE_PARAM_PORT);
@@ -516,19 +516,19 @@ int main(int argc, char * argv[]) {
         sprintf(fc1_image_socket.port, "%s", SC2_RECEIVE_SOLVE_PORT);
     }
     pthread_t params_fc1;
-    fc2_return_socket.image_solutions = NULL;
-    fc2_return_socket.camera_params = &FC1_return;
-    fc2_return_socket.camera_trigger = NULL;
-    fc2_return_socket.camera_commands = NULL;
+    fc1_return_socket.image_solutions = NULL;
+    fc1_return_socket.camera_params = &FC1_return;
+    fc1_return_socket.camera_trigger = NULL;
+    fc1_return_socket.camera_commands = NULL;
     pthread_t images_fc1;
-    fc2_image_socket.image_solutions = &FC1_astro;
-    fc2_image_socket.camera_params = NULL;
-    fc2_image_socket.camera_trigger = NULL;
-    fc2_image_socket.camera_commands = NULL;
+    fc1_image_socket.image_solutions = &FC1_astro;
+    fc1_image_socket.camera_params = NULL;
+    fc1_image_socket.camera_trigger = NULL;
+    fc1_image_socket.camera_commands = NULL;
 
     if (i_am_SC1)
     {
-        printf("I am SC1 and am setting up comms to FC2 as such")
+        printf("I am SC1 and am setting up comms to FC2 as such\n");
         // set up the parameter comm socket on SC1 port
         sprintf(fc2_return_socket.ipAddr, "%s", FC2_IP_ADDR);
         sprintf(fc2_return_socket.port,"%s", SC1_RECEIVE_PARAM_PORT);
@@ -537,7 +537,7 @@ int main(int argc, char * argv[]) {
         sprintf(fc2_image_socket.port, "%s", SC1_RECEIVE_SOLVE_PORT);
     } else if (!i_am_SC1)
     {
-        printf("I am SC2 and am setting up comms to FC2 as such")
+        printf("I am SC2 and am setting up comms to FC2 as such\n");
         // set up the parameter comm socket on SC2 port
         sprintf(fc2_return_socket.ipAddr, "%s", FC2_IP_ADDR);
         sprintf(fc2_return_socket.port,"%s", SC2_RECEIVE_PARAM_PORT);
@@ -555,9 +555,6 @@ int main(int argc, char * argv[]) {
     fc2_image_socket.camera_params = NULL;
     fc2_image_socket.camera_trigger = NULL;
     fc2_image_socket.camera_commands = NULL;
-    
-
-
 
     int opt;                         // parsing command-line options
     int long_index = 0;              // for tracking which option we're at
@@ -779,12 +776,16 @@ int main(int argc, char * argv[]) {
     }
 
     // Create the listening threads for MCP
+    pthread_create(&listen_fc1, NULL, listen_thread, (void *) &fc1Socket_listen);
     pthread_create(&listen_fc2, NULL, listen_thread, (void *) &fc2Socket_listen);
 
     // Create the trigger listening threads
+    pthread_create(&listen_fc1_trigger, NULL, trigger_thread, (void *) &fc1Socket_trigger);
     pthread_create(&listen_fc2_trigger, NULL, trigger_thread, (void *) &fc2Socket_trigger);
 
     // Create the talking threads for MCP
+    pthread_create(&images_fc1, NULL, astrometry_data_thread, (void *) &fc1_image_socket);
+    pthread_create(&params_fc1, NULL, parameter_data_thread, (void *) &fc1_return_socket); 
     pthread_create(&images_fc2, NULL, astrometry_data_thread, (void *) &fc2_image_socket);
     pthread_create(&params_fc2, NULL, parameter_data_thread, (void *) &fc2_return_socket); 
 
@@ -833,10 +834,15 @@ int main(int argc, char * argv[]) {
     }
 
     // Join the listening threads now that everything is dying
+    pthread_join(listen_fc1, NULL);
     pthread_join(listen_fc2, NULL);
+    pthread_join(listen_fc1_trigger, NULL);
+    pthread_join(listen_fc2_trigger, NULL);
+    pthread_join(images_fc1, NULL);
     pthread_join(images_fc2, NULL);
+    pthread_join(params_fc1, NULL);
     pthread_join(params_fc2, NULL);
-    
+
     // join threads once the Astrometry thread has closed and terminated
     pthread_join(astro_thread_id, (void **) &(astro_ptr));
     if (any_clients) {

@@ -76,7 +76,7 @@ static int populate_parameter_packet(struct star_cam_return * packet_data) {
 // our omnibus function for vomiting the packets to MCP
 void *astrometry_data_thread(void *args) {
     struct socket_data * socket_target = args;
-    static int first_time = 1;
+    int first_time = 1;
     int sockfd;
     struct addrinfo hints, *servinfo, *servinfoCheck;
     int returnval;
@@ -134,7 +134,7 @@ void *astrometry_data_thread(void *args) {
             struct sockaddr_in *ipv = (struct sockaddr_in *)servinfo->ai_addr;
             // then pass the pointer to translation and put it in a string
             inet_ntop(AF_INET, &(ipv->sin_addr), ipAddr, INET_ADDRSTRLEN);
-            printf("IP target is: %s\n", ipAddr);
+            printf("Astrometry thread: IP target is: %s\n", ipAddr);
             // now the "str" is packed with the IP address string
             // first time setup of the socket is done
         }
@@ -154,7 +154,7 @@ void *astrometry_data_thread(void *args) {
                 }
                 printf("%s sent packet to %s:%s\n", message_str, ipAddr, socket_target->port);
             } else {
-                printf("Target destination differs from thread target.\n");
+                printf("Astrometry thread: target destination %s differs from thread target %s.\n", socket_target->ipAddr, ipAddr);
             }
         } else {
             if (image_solved[which_fc] != 0)
@@ -172,7 +172,7 @@ void *astrometry_data_thread(void *args) {
 // and now we have the vomit parameter packets to MCP version to write!
 void *parameter_data_thread(void *args) {
     struct socket_data * socket_target = args;
-    static int first_time = 1;
+    int first_time = 1;
     int sockfd;
     struct addrinfo hints, *servinfo, *servinfoCheck;
     int returnval;
@@ -197,39 +197,39 @@ void *parameter_data_thread(void *args) {
     }
     while (!shutting_down) {
         if (first_time == 1) {
-        first_time = 0;
-        memset(&hints, 0, sizeof hints);
-        hints.ai_family = AF_INET; // set to AF_INET to use IPv4
-        hints.ai_socktype = SOCK_DGRAM;
-        // fill out address info and return if it fails.
-        if ((returnval = getaddrinfo(socket_target->ipAddr, socket_target->port, &hints, &servinfo)) != 0) {
-            printf("getaddrinfo: %s\n", gai_strerror(returnval));
-            return NULL;
-        }
-        // now we make a socket with this info
-        for (servinfoCheck = servinfo; servinfoCheck != NULL; servinfoCheck = servinfoCheck->ai_next) {
-            if ((sockfd = socket(servinfoCheck->ai_family,
-             servinfoCheck->ai_socktype, servinfoCheck->ai_protocol)) == -1) {
-                perror("talker: socket");
-                continue;
+            first_time = 0;
+            memset(&hints, 0, sizeof hints);
+            hints.ai_family = AF_INET; // set to AF_INET to use IPv4
+            hints.ai_socktype = SOCK_DGRAM;
+            // fill out address info and return if it fails.
+            if ((returnval = getaddrinfo(socket_target->ipAddr, socket_target->port, &hints, &servinfo)) != 0) {
+                printf("getaddrinfo: %s\n", gai_strerror(returnval));
+                return NULL;
             }
-            break;
-        }
-        // check to see if we made a socket
-        if (servinfoCheck == NULL) {
-            // set status to 0 (dead) if this fails
-            printf("talker: failed to create socket\n");
-            return NULL;
-        }
-        // if we pass all of these checks then
-        // we set up the print statement vars
-        // need to cast the socket address to an INET still address
-        struct sockaddr_in *ipv = (struct sockaddr_in *)servinfo->ai_addr;
-        // then pass the pointer to translation and put it in a string
-        inet_ntop(AF_INET, &(ipv->sin_addr), ipAddr, INET_ADDRSTRLEN);
-        printf("IP target is: %s\n", ipAddr);
-        // now the "str" is packed with the IP address string
-        // first time setup of the socket is done
+            // now we make a socket with this info
+            for (servinfoCheck = servinfo; servinfoCheck != NULL; servinfoCheck = servinfoCheck->ai_next) {
+                if ((sockfd = socket(servinfoCheck->ai_family,
+                servinfoCheck->ai_socktype, servinfoCheck->ai_protocol)) == -1) {
+                    perror("talker: socket");
+                    continue;
+                }
+                break;
+            }
+            // check to see if we made a socket
+            if (servinfoCheck == NULL) {
+                // set status to 0 (dead) if this fails
+                printf("talker: failed to create socket\n");
+                return NULL;
+            }
+            // if we pass all of these checks then
+            // we set up the print statement vars
+            // need to cast the socket address to an INET still address
+            struct sockaddr_in *ipv = (struct sockaddr_in *)servinfo->ai_addr;
+            // then pass the pointer to translation and put it in a string
+            inet_ntop(AF_INET, &(ipv->sin_addr), ipAddr, INET_ADDRSTRLEN);
+            printf("Parameter thread: IP target is: %s\n", ipAddr);
+            // now the "str" is packed with the IP address string
+            // first time setup of the socket is done
         }
         // now we pack the packet with the most recent data
         packet_status = populate_parameter_packet(&param_data);
@@ -243,7 +243,7 @@ void *parameter_data_thread(void *args) {
                 }
                 printf("%s sent packet to %s:%s\n", message_str, ipAddr, socket_target->port);
             } else {
-                printf("Target destination differs from thread target.\n");
+                printf("Param thread: target destination %s differs from thread target %s.\n", socket_target->ipAddr, ipAddr);
             }
         } else {
             printf("Parameter packet could not be packed...\n");
