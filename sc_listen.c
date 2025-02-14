@@ -106,15 +106,6 @@ int check_AF_params(struct star_cam_capture data) {
     return distance % data.focusStep;
 }
 
-void *get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
-
 // int command_lock = 0;
 // lock that prevents multiple clients from overwriting command data 1 in use 0 free
 // int cancelling_auto_focus = 0;
