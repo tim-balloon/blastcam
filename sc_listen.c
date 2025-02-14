@@ -394,7 +394,7 @@ void *listen_thread(void *args){
             if ((returnval = getaddrinfo(NULL, socket_target->port, &hints, &servinfo)) != 0) {
                 printf("getaddrinfo: %s\n", gai_strerror(returnval));
                 // set status to 0 (dead) if this fails
-                set_status(socket_target->ipAddr, socket_target->port, 0);
+                // set_status(socket_target->ipAddr, socket_target->port, 0);
                 return NULL;
             }
 
@@ -409,7 +409,7 @@ void *listen_thread(void *args){
                 if (bind(sockfd, servinfoCheck->ai_addr, servinfoCheck->ai_addrlen) == -1) {
                     close(sockfd);
                     // set status to 0 (dead) if this fails
-                    set_status(socket_target->ipAddr, socket_target->port, 0);
+                    // // set_status(socket_target->ipAddr, socket_target->port, 0);
                     perror("listener: bind");
                     continue;
                 }
@@ -419,7 +419,7 @@ void *listen_thread(void *args){
 
             if (servinfoCheck == NULL) {
                 // set status to 0 (dead) if this fails
-                set_status(socket_target->ipAddr, socket_target->port, 0);
+                // set_status(socket_target->ipAddr, socket_target->port, 0);
                 fprintf(stderr, "listener: failed to bind socket\n");
                 return NULL;
             }
@@ -461,7 +461,7 @@ void *listen_thread(void *args){
     close(sockfd);
     // set status to 0 (dead) if we end
     printf("Socket dying\n");
-    set_status(socket_target->ipAddr, socket_target->port, 0);
+    // set_status(socket_target->ipAddr, socket_target->port, 0);
     return NULL;
 }
 
@@ -525,7 +525,7 @@ void * trigger_thread(void * args) {
             if ((returnval = getaddrinfo(NULL, socket_target->port, &hints, &servinfo)) != 0) {
                 printf("getaddrinfo: %s\n", gai_strerror(returnval));
                 // set status to 0 (dead) if this fails
-                set_status(socket_target->ipAddr, socket_target->port, 0);
+                // set_status(socket_target->ipAddr, socket_target->port, 0);
                 return NULL;
             }
 
@@ -540,7 +540,7 @@ void * trigger_thread(void * args) {
                 if (bind(sockfd, servinfoCheck->ai_addr, servinfoCheck->ai_addrlen) == -1) {
                     close(sockfd);
                     // set status to 0 (dead) if this fails
-                    set_status(socket_target->ipAddr, socket_target->port, 0);
+                    // set_status(socket_target->ipAddr, socket_target->port, 0);
                     perror("listener: bind");
                     continue;
                 }
@@ -550,7 +550,7 @@ void * trigger_thread(void * args) {
 
             if (servinfoCheck == NULL) {
                 // set status to 0 (dead) if this fails
-                set_status(socket_target->ipAddr, socket_target->port, 0);
+                // set_status(socket_target->ipAddr, socket_target->port, 0);
                 fprintf(stderr, "listener: failed to bind socket\n");
                 return NULL;
             }
@@ -592,6 +592,6 @@ void * trigger_thread(void * args) {
     close(sockfd);
     // set status to 0 (dead) if we end
     printf("Socket dying\n");
-    set_status(socket_target->ipAddr, socket_target->port, 0);
+    // set_status(socket_target->ipAddr, socket_target->port, 0);
     return NULL;
 }

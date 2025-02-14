@@ -1,4 +1,4 @@
-/* Funcrions swap(), pivot(), forwardElimination(), backSubstitution(), and 
+/* Functions swap(), pivot(), forwardElimination(), backSubstitution(), and 
 ** gaussianElimination() were adapted from Sedgewick and Wayne's 
 ** GaussianElimination.java package:
 ** https://algs4.cs.princeton.edu/code/edu/princeton/cs/algs4/GaussianElimination.java.html
