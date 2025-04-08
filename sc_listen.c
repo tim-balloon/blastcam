@@ -106,15 +106,6 @@ int check_AF_params(struct star_cam_capture data) {
     return distance % data.focusStep;
 }
 
-void *get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
-
 // int command_lock = 0;
 // lock that prevents multiple clients from overwriting command data 1 in use 0 free
 // int cancelling_auto_focus = 0;
@@ -394,7 +385,7 @@ void *listen_thread(void *args){
             if ((returnval = getaddrinfo(NULL, socket_target->port, &hints, &servinfo)) != 0) {
                 printf("getaddrinfo: %s\n", gai_strerror(returnval));
                 // set status to 0 (dead) if this fails
-                set_status(socket_target->ipAddr, socket_target->port, 0);
+                // set_status(socket_target->ipAddr, socket_target->port, 0);
                 return NULL;
             }
 
@@ -409,7 +400,7 @@ void *listen_thread(void *args){
                 if (bind(sockfd, servinfoCheck->ai_addr, servinfoCheck->ai_addrlen) == -1) {
                     close(sockfd);
                     // set status to 0 (dead) if this fails
-                    set_status(socket_target->ipAddr, socket_target->port, 0);
+                    // // set_status(socket_target->ipAddr, socket_target->port, 0);
                     perror("listener: bind");
                     continue;
                 }
@@ -419,7 +410,7 @@ void *listen_thread(void *args){
 
             if (servinfoCheck == NULL) {
                 // set status to 0 (dead) if this fails
-                set_status(socket_target->ipAddr, socket_target->port, 0);
+                // set_status(socket_target->ipAddr, socket_target->port, 0);
                 fprintf(stderr, "listener: failed to bind socket\n");
                 return NULL;
             }
@@ -461,7 +452,7 @@ void *listen_thread(void *args){
     close(sockfd);
     // set status to 0 (dead) if we end
     printf("Socket dying\n");
-    set_status(socket_target->ipAddr, socket_target->port, 0);
+    // set_status(socket_target->ipAddr, socket_target->port, 0);
     return NULL;
 }
 
@@ -525,7 +516,7 @@ void * trigger_thread(void * args) {
             if ((returnval = getaddrinfo(NULL, socket_target->port, &hints, &servinfo)) != 0) {
                 printf("getaddrinfo: %s\n", gai_strerror(returnval));
                 // set status to 0 (dead) if this fails
-                set_status(socket_target->ipAddr, socket_target->port, 0);
+                // set_status(socket_target->ipAddr, socket_target->port, 0);
                 return NULL;
             }
 
@@ -540,7 +531,7 @@ void * trigger_thread(void * args) {
                 if (bind(sockfd, servinfoCheck->ai_addr, servinfoCheck->ai_addrlen) == -1) {
                     close(sockfd);
                     // set status to 0 (dead) if this fails
-                    set_status(socket_target->ipAddr, socket_target->port, 0);
+                    // set_status(socket_target->ipAddr, socket_target->port, 0);
                     perror("listener: bind");
                     continue;
                 }
@@ -550,7 +541,7 @@ void * trigger_thread(void * args) {
 
             if (servinfoCheck == NULL) {
                 // set status to 0 (dead) if this fails
-                set_status(socket_target->ipAddr, socket_target->port, 0);
+                // set_status(socket_target->ipAddr, socket_target->port, 0);
                 fprintf(stderr, "listener: failed to bind socket\n");
                 return NULL;
             }
@@ -592,6 +583,6 @@ void * trigger_thread(void * args) {
     close(sockfd);
     // set status to 0 (dead) if we end
     printf("Socket dying\n");
-    set_status(socket_target->ipAddr, socket_target->port, 0);
+    // set_status(socket_target->ipAddr, socket_target->port, 0);
     return NULL;
 }
