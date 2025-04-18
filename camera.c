@@ -1410,6 +1410,29 @@ int doCameraAndAstrometry() {
         printf("Error retrieving the active image memory: %s.\n", cam_error);
     }
 
+
+    /*
+    ** unpack the image
+    */
+    int total_pixels = sensorInfo.nMaxWidth * sensorInfo.nMaxHeight;
+    static uint16_t * unpacked_image = NULL;
+    static int unpacked_alloc_size=0;
+
+    if (unpacked_image == NULL || unpacked_alloc_size < total_pixels){
+        if (unpacked_image != NULL){
+            free(unpacked_image);
+        }
+
+        unpacked_image = malloc(sizeof(uint16_t) * total_pixels); //allocate 16bits per pixel
+        unpacked_alloc_size = total_pixels;
+        if (unpacked_image == NULL){
+            fprint(stderr, "Failed to allocate unpacket image buffer\n");
+            return -1;
+        }
+    }
+
+    unpack12Bit((uint8_t *)memory, unpacked_image,total_pixels);
+
     // testing pictures that have already been taken
     if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
                          (char **) &memory) == 1) {
