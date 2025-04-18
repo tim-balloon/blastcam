@@ -1510,7 +1510,8 @@ int doCameraAndAstrometry() {
     }
 
     // make kst display the filtered image 
-    memcpy(unpacked_image, output_buffer, CAMERA_WIDTH*CAMERA_HEIGHT); 
+    //TODO: I think this line is wrong. follow up ATW
+    memcpy(unpacked_image, output_buffer, CAMERA_WIDTH*CAMERA_HEIGHT*sizeof(uint16_t)); 
 
     // pointer for transmitting to user should point to where image is in memory
     camera_raw = output_buffer;
