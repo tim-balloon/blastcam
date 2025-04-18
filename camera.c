@@ -121,6 +121,45 @@ void verifyBlobParams() {
     printf("+---------------------------------------------------------+\n\n");
 }
 
+/* function to unpack 12bit pixels
+**
+**
+*/
+void unpack12Bit(uint8_t * packed, uint16_t * unpacked, int num_pixels){
+/*
+** packed = array of 3 bytes
+** unpacked = array of 16 bit values
+** num_pixels = number of pixels to unpack. probably 2. 
+*/
+
+/*
+** for loop explanation
+**
+** 0x0F is the lower 4 bits of the byte
+**
+** packed[j] | ((packed[j+1] & 0x0F) << 8) 
+** packed[j] is the first byte, 
+** packed[j+1] & 0x0F : masks the first four bits of the second byte
+** (packed[j+1] & 0x0F) << 8 : shifts bits up to positions 8-11
+** first byte and first four bits of second byte are combined with OR
+**
+** ((packed[j+1] >> 4) & 0x0F | packed[j+2] << 4)
+** packed[j+1] >> 4 : shift the second byte putting upper 4 bits into first four 
+** positions of new 12-bit value
+** (packed[j+1] >> 4) & 0x0F mask out any remaining bits 
+** packed[J+2] << 4 shift third byte up
+** second 4 bits of second byte combined with third byte with OR
+**
+*/
+    for (int i=0,j=0; i<num_pixels; i+=2,j+=3){
+        uint16_t p1 = packed[j] | ((packed[j+1] & 0x0F) << 8); 
+        uint16_t p2 = ((packed[j+1] >> 4) & 0x0F | packed[j+2] << 4);
+        unpacked[i] = p1;
+        unpacked[i+1] = p2;
+    }
+}
+
+
 /* Helper function to print camera errors.
 ** Input: None.
 ** Output: The error from the camera.
