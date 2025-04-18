@@ -129,7 +129,7 @@ void unpack12Bit(uint8_t * packed, uint16_t * unpacked, int num_pixels){
 /*
 ** packed = array of 3 bytes
 ** unpacked = array of 16 bit values
-** num_pixels = number of pixels to unpack. probably 2. 
+** num_pixels = number of pixels to unpack.
 */
 
 /*
