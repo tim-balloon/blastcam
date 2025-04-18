@@ -478,7 +478,7 @@ int loadCamera() {
     // allocate camera memory
 	color_depth = 24; 
 	if (is_AllocImageMem(camera_handle, sensorInfo.nMaxWidth, 
-                         sensorInfo.nMaxHeight, color_depth, &mem_starting_ptr, 
+                         sensorInfo.nMaxHeight, color_depth, (char **) &mem_starting_ptr, 
                          &mem_id) != IS_SUCCESS) {
 		cam_error = printCameraError();
         printf("Error allocating image memory: %s.\n", cam_error);
@@ -1404,7 +1404,7 @@ int doCameraAndAstrometry() {
     all_astro_params.photo_time = photo_time;
 
     // get the image from memory
-    if (is_GetActSeqBuf(camera_handle, &buffer_num, &waiting_mem, &memory) 
+    if (is_GetActSeqBuf(camera_handle, &buffer_num, (char **) &waiting_mem, (char **) &memory) 
         != IS_SUCCESS) {
         cam_error = printCameraError();
         printf("Error retrieving the active image memory: %s.\n", cam_error);
@@ -1412,7 +1412,7 @@ int doCameraAndAstrometry() {
 
     // testing pictures that have already been taken
     if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
-                         &memory) == 1) {
+                         (char **) &memory) == 1) {
         if (verbose) {
             printf("Successfully loaded test picture.\n");
         }
