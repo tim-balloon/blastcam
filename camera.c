@@ -36,7 +36,7 @@ int send_data = 0;
 int taking_image = 0;
 int default_focus_photos = 3;
 int buffer_num, shutting_down, mem_id;
-char * memory, * waiting_mem, * mem_starting_ptr;
+uint8_t * memory, * waiting_mem, * mem_starting_ptr; //we want raw bytes
 unsigned char * mask;
 // for printing camera errors
 const char * cam_error;
@@ -476,7 +476,7 @@ int loadCamera() {
     }
  	
     // allocate camera memory
-	color_depth = 8; 
+	color_depth = 24; 
 	if (is_AllocImageMem(camera_handle, sensorInfo.nMaxWidth, 
                          sensorInfo.nMaxHeight, color_depth, &mem_starting_ptr, 
                          &mem_id) != IS_SUCCESS) {
