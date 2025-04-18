@@ -558,7 +558,7 @@ void setSaveImage() {
 ** Output: None (void). Makes the dynamic and static hot pixel masks for the 
 ** Star Camera image.
 */
-void makeMask(char * ib, int i0, int j0, int i1, int j1, int x0, int y0, 
+void makeMask(uint16_t * ib, int i0, int j0, int i1, int j1, int x0, int y0, 
               bool subframe) {
     static int first_time = 1;
     static int * x_p = NULL, * y_p = NULL;
@@ -788,7 +788,7 @@ void boxcarFilterImage(char * ib, int i0, int j0, int i1, int j1, int r_f,
 ** image after processing (masking, filtering, et cetera).
 ** Output: the number of blobs detected in the image.
 */
-int findBlobs(char * input_buffer, int w, int h, double ** star_x, 
+int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x, 
               double ** star_y, double ** star_mags, char * output_buffer) { 
     static int first_time = 1;
     static double * ic = NULL, * ic2 = NULL;
@@ -1447,7 +1447,7 @@ int doCameraAndAstrometry() {
     }
 
     // find the blobs in the image
-    blob_count = findBlobs(memory, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 
+    blob_count = findBlobs(unpacked_image, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 
                            &star_y, &star_mags, output_buffer);
     // Add some logic to automatically try filtering the image
     // if the number of blobs found is not in some nice passband
@@ -1456,7 +1456,7 @@ int doCameraAndAstrometry() {
     {
         printf("Couldn't find an appropriate number of blobs, filtering image...\n");
         all_blob_params.high_pass_filter = 1;
-        blob_count = findBlobs(memory, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 
+        blob_count = findBlobs(unpacked_image, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 
                            &star_y, &star_mags, output_buffer);
         all_blob_params.high_pass_filter = 0;
     }
