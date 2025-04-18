@@ -61,7 +61,7 @@ void verifyBlobParams();
 int makeTable(char * filename, double * star_mags, double * star_x, 
               double * star_y, int blob_count);
 int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x, 
-              double ** star_y, double ** star_mags, char * output_buffer);
+              double ** star_y, double ** star_mags, uint16_t * output_buffer);
 void unpack12Bit(uint8_t * packed, uint16_t * unpacked, int num_pixels);
 
 #endif 

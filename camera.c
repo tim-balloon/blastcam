@@ -789,7 +789,7 @@ void boxcarFilterImage(char * ib, int i0, int j0, int i1, int j1, int r_f,
 ** Output: the number of blobs detected in the image.
 */
 int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x, 
-              double ** star_y, double ** star_mags, char * output_buffer) { 
+              double ** star_y, double ** star_mags, uint16_t * output_buffer) { 
     static int first_time = 1;
     static double * ic = NULL, * ic2 = NULL;
     static int num_blobs_alloc = 0;
@@ -1159,7 +1159,7 @@ int doCameraAndAstrometry() {
     // these must be static since this function is called perpetually in 
     // updateAstrometry thread
     static double * star_x = NULL, * star_y = NULL, * star_mags = NULL;
-    static char * output_buffer = NULL;
+    static uint16_t * output_buffer = NULL;
     static int first_time = 1, af_photo = 0;
     static FILE * af_file = NULL;
     static FILE * fptr = NULL;
@@ -1216,7 +1216,7 @@ int doCameraAndAstrometry() {
     }
 
     if (first_time) {
-        output_buffer = calloc(1, CAMERA_WIDTH*CAMERA_HEIGHT);
+        output_buffer = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, sizeof(uint16_t));
         if (output_buffer == NULL) {
             fprintf(stderr, "Error allocating output buffer: %s.\n", 
                     strerror(errno));
@@ -1485,7 +1485,7 @@ int doCameraAndAstrometry() {
         image_locs[8] = (int) ((star_x[i]+1)+CAMERA_WIDTH*(CAMERA_HEIGHT-star_y[i]-1));
         for (int j = 0; j < 9; j++)
         {
-            sum += (double) memory[image_locs[j]]; // get the total flux in the 3x3
+            sum += (double) unpacked_image[image_locs[j]]; // get the total flux in the 3x3
         }
         // grab the actual x + y positions in 2d instead of flattened
         x_locs[0] = x_locs[3] = x_locs[6] = star_x[i]-1;
@@ -1497,8 +1497,8 @@ int doCameraAndAstrometry() {
         // flux weight the locations
         for (int j2 = 0; j2 < 9; j2++)
         {
-            x_locs[j2] = x_locs[j2]*memory[image_locs[j2]]/sum;
-            y_locs[j2] = y_locs[j2]*memory[image_locs[j2]]/sum;
+            x_locs[j2] = x_locs[j2]*unpacked_image[image_locs[j2]]/sum;
+            y_locs[j2] = y_locs[j2]*unpacked_image[image_locs[j2]]/sum;
         }
         for (int j3 = 0; j3 < 9; j3++)
         {
@@ -1510,7 +1510,7 @@ int doCameraAndAstrometry() {
     }
 
     // make kst display the filtered image 
-    memcpy(memory, output_buffer, CAMERA_WIDTH*CAMERA_HEIGHT); 
+    memcpy(unpacked_image, output_buffer, CAMERA_WIDTH*CAMERA_HEIGHT); 
 
     // pointer for transmitting to user should point to where image is in memory
     camera_raw = output_buffer;
