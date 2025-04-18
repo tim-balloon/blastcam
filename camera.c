@@ -1414,7 +1414,7 @@ int doCameraAndAstrometry() {
     /*
     ** unpack the image
     */
-    int total_pixels = sensorInfo.nMaxWidth * sensorInfo.nMaxHeight;
+    int total_pixels = CAMERA_WIDTH * CAMERA_HEIGHT;
     static uint16_t * unpacked_image = NULL;
     static int unpacked_alloc_size=0;
 
@@ -1426,7 +1426,7 @@ int doCameraAndAstrometry() {
         unpacked_image = malloc(sizeof(uint16_t) * total_pixels); //allocate 16bits per pixel
         unpacked_alloc_size = total_pixels;
         if (unpacked_image == NULL){
-            fprint(stderr, "Failed to allocate unpacket image buffer\n");
+            fprintf(stderr, "Failed to allocate unpacket image buffer\n");
             return -1;
         }
     }
