@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 
 #include "../convolve.h"
 
@@ -49,7 +50,21 @@ int main(int argc, char* argv[]) {
     int32_t imageResult[121] = {0};
     double imageResultDbl[121] = {0.0};
 
-    doConvolution(imageBuffer, imageWidth, imageNumPix, kernel, kernelSize, imageResult);
+    struct timespec tstart = {0,0};
+    struct timespec tend = {0,0};
+
+    int nCalls = 100;
+    while (nCalls > 0) {
+        nCalls -= 1;
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tstart);
+
+        doConvolution(imageBuffer, imageWidth, imageNumPix, kernel, kernelSize, imageResult);
+
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tend);
+        printf("doConvolution took about %.7f seconds\n",
+            ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
+            ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+    }
 
     // gaussian normalize
     // for (uint32_t i = 0; i < imageNumPix; i++) {

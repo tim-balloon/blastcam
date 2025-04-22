@@ -69,6 +69,8 @@ int32_t convolve(uint16_t* array, int16_t* kernel, uint8_t kernelSize) {
  * convolving the 3x3 neighborhood of each pixel with the supplied 3x3 kernel.
  * This version is intended for integer-valued kernels, i.e., boxcar, Sobel 
  * filtering, or even Gaussian filtering before dividing by the normalization.
+ * The primary application will be autofocusing. For filtering large-scale
+ * noise like PMCs, a variable-radius filter is required.
  * 
  * @param[in] imageBuffer 
  * @param imageWidth 
