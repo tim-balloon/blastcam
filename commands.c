@@ -195,30 +195,6 @@ void verifyTelemetryData() {
 ** Output: None (void). 
 */
 void * updateAstrometry() {
-    // have star cameras talk back to mcp
-    // open a writing socket to my destination address
-    int sockfd;
-    struct addrinfo hints, *servinfo, *p;
-    int rv;
-    int numbytes;
-    int bytes_sent;
-    int length;
-    int *retval;
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_INET; // set to AF_INET to use IPv4
-    hints.ai_socktype = SOCK_DGRAM;
-    // dummy values for testing
-    mcp_astro.ra_j2000 = 1.123145141212;
-    mcp_astro.dec_j2000 = 5.64535233423;
-
-    if ((rv = getaddrinfo(DESTINATION, PORT, &hints, &servinfo)) != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-        *retval = 1;
-        return retval;
-    }
-        // loop through all the results and make a socket
-    printf("Making a socket...\n");
-    sockfd = socket(servinfo->ai_family,servinfo->ai_socktype, servinfo->ai_protocol);
     // solve astrometry perpetually when the camera is not shutting down
     while (!shutting_down) {
         if (doCameraAndAstrometry() < 1) {
