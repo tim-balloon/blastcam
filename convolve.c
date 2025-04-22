@@ -1,0 +1,93 @@
+#include "convolve.h"
+
+/**
+ * @brief Returns the 9 pixels including and surrounding the given pixel index.
+ * 
+ * @details Supplied arrays are accessed in C row-major order. In row-major 
+ * order, left/right adjacent pixels are adjacent in the array, while top/
+ * bottom pixels are `imageWidth` indices apart. For edge cases, place 0s in
+ * `neighborhood`, to zero out that term in convolution.
+ * @param[in] imageBuffer contiguous memory containing original pixel values
+ * @param pixelIndex raw row-major index into image memory
+ * @param imageWidth number of columns in a single image row
+ * @param imageNumPix number of columns x number of rows in image
+ * @param[out] neighborhood 9-element array containing 3x3 block of pixels around
+ * `pixelIndex`
+ */
+void getNeighborhood(
+    uint16_t* imageBuffer,
+    uint32_t pixelIndex,
+    uint16_t imageWidth,
+    uint32_t imageNumPix,
+    uint16_t* neighborhood) {
+    bool isLeft = (0 == pixelIndex % imageWidth);
+    bool isRight = (0 == ((pixelIndex + 1) % imageWidth));
+    bool isBottom = ((int64_t)pixelIndex - imageWidth) < 0;
+    bool isTop = (pixelIndex + imageWidth) >= imageNumPix;
+
+    // If not blocked by image bound guards, return pixel value, else return 0
+    // TODO: Implement masking for hot pixels here? Masked pixels should be 0
+    // in convolution
+    neighborhood[0] = (!isBottom && !isLeft)     ? imageBuffer[pixelIndex - imageWidth - 1] : 0U;
+    neighborhood[1] = (!isBottom)                ? imageBuffer[pixelIndex - imageWidth]     : 0U;
+    neighborhood[2] = (!isBottom && !isRight)    ? imageBuffer[pixelIndex - imageWidth + 1] : 0U;
+    neighborhood[3] = (!isLeft)                  ? imageBuffer[pixelIndex - 1]              : 0U;
+    // ought to be limited by caller's for loop, but belt & suspenders
+    neighborhood[4] = (pixelIndex < imageNumPix) ? imageBuffer[pixelIndex]                  : 0U;
+    neighborhood[5] = (!isRight)                 ? imageBuffer[pixelIndex + 1]              : 0U;
+    neighborhood[6] = (!isTop && !isLeft)        ? imageBuffer[pixelIndex + imageWidth - 1] : 0U;
+    neighborhood[7] = (!isTop)                   ? imageBuffer[pixelIndex + imageWidth]     : 0U;
+    neighborhood[8] = (!isTop && !isRight)       ? imageBuffer[pixelIndex + imageWidth + 1] : 0U;
+}
+
+
+/**
+ * @brief The innermost part of the convolution algorithm, add-and-multiply
+ * pixels by kernel elements.
+ * 
+ * @param[in] array the input array to be considered; intended to be the output of
+ * `getNeighborhood`
+ * @param kernel the convolution kernel. Don't pass arrays of other types in
+ * here, you heathen.
+ * @param kernelSize the length of the flattened, square kernel
+ * @return int32_t the result of the convolution
+ */
+int32_t convolve(uint16_t* array, int16_t* kernel, uint8_t kernelSize) {
+    int32_t sum = 0;
+    // Assumption: array and kernel are same size.
+    for (uint8_t i = 0; i < kernelSize; i++) {
+        sum += array[i] * kernel[kernelSize - i - 1];
+    }
+    return sum;
+}
+
+
+/**
+ * @brief Implements a limited, 3x3 convolution over the image.
+ * 
+ * @details Proceeds over the contiguous image buffer pixel-by-pixel,
+ * convolving the 3x3 neighborhood of each pixel with the supplied 3x3 kernel.
+ * This version is intended for integer-valued kernels, i.e., boxcar, Sobel 
+ * filtering, or even Gaussian filtering before dividing by the normalization.
+ * 
+ * @param[in] imageBuffer 
+ * @param imageWidth 
+ * @param imageNumPix 
+ * @param[in] kernel 
+ * @param kernelSize 
+ * @param[out] imageResult 
+ */
+void doConvolution(
+    uint16_t* imageBuffer,
+    uint16_t imageWidth,
+    uint32_t imageNumPix,
+    int16_t* kernel,
+    uint8_t kernelSize,
+    int32_t* imageResult) {
+    // statically allocate this array for (re)use throughout the run
+    uint16_t neighborhood[9] = {0};
+    for (uint32_t i = 0; i < imageNumPix; i++) {
+        getNeighborhood(imageBuffer, i, imageWidth, imageNumPix, neighborhood);
+        imageResult[i] = convolve(neighborhood, kernel, kernelSize);
+    }
+}
