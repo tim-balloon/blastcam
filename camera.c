@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <ueye.h>
 #include <stdbool.h>
-#include <pthread.h>  
+#include <pthread.h>
 #include <sys/time.h>
 
 #include "camera.h"
@@ -593,6 +593,7 @@ void makeMask(char * ib, int i0, int j0, int i1, int j1, int x0, int y0,
     
     int cutoff = all_blob_params.spike_limit*100.0;
 
+    // Zero out borders of mask array
     for (i = i0; i < i1; i++) {
         mask[i + CAMERA_WIDTH*j0] = mask[i + (j1-1)*CAMERA_WIDTH] = 0;
     }
@@ -823,7 +824,7 @@ int findBlobs(char * input_buffer, int w, int h, double ** star_x,
     // lowpass filter the image - reduce noise.
     boxcarFilterImage(input_buffer, i0, j0, i1, j1, all_blob_params.r_smooth, 
                       ic);
-        // test code to grab real filtered images if we want.
+    // test code to grab real filtered images if we want.
     /* for (int j = 0; j < CAMERA_HEIGHT; j++)
     {
         for (int i = 0; i < CAMERA_WIDTH; i++)
@@ -1372,17 +1373,17 @@ int doCameraAndAstrometry() {
     }
 
     // testing pictures that have already been taken
-    if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
-                         &memory) == 1) {
-        if (verbose) {
-            printf("Successfully loaded test picture.\n");
-        }
-    } else {
-        fprintf(stderr, "Error loading test picture: %s.\n", strerror(errno));
-        // can't solve without a picture to solve on!
-        usleep(1000000);
-        return -1;
-    }
+    // if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
+    //                      &memory) == 1) {
+    //     if (verbose) {
+    //         printf("Successfully loaded test picture.\n");
+    //     }
+    // } else {
+    //     fprintf(stderr, "Error loading test picture: %s.\n", strerror(errno));
+    //     // can't solve without a picture to solve on!
+    //     usleep(1000000);
+    //     return -1;
+    // }
 
     // find the blobs in the image
     blob_count = findBlobs(memory, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 
