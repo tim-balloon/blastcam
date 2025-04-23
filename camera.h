@@ -47,11 +47,13 @@ struct blob_params {
 
 extern struct blob_params all_blob_params;
 extern struct trigger_params all_trigger_params;
+extern struct camera_params all_camera_params;
 
 int setCameraParams();
 void setSaveImage();
 int loadCamera();
 int initCamera();
+int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm* tm_info, char* output_buffer);
 int doCameraAndAstrometry();
 void clean();
 void closeCamera();

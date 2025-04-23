@@ -7,8 +7,15 @@
 
 #include "../convolve.h"
 
+#define IMAGE_WIDTH 5000
+#define IMAGE_HEIGHT 3000
 
-int saveArrayDumb(double* imageResult, uint16_t imageWidth, uint32_t imageNumPix) {
+int32_t imageBuffer[IMAGE_WIDTH * IMAGE_HEIGHT] = {0};
+unsigned char mask[IMAGE_WIDTH * IMAGE_HEIGHT] = {0};
+int32_t imageResult[IMAGE_WIDTH * IMAGE_HEIGHT] = {0};
+
+
+int saveArrayDumb(int32_t* imageResult, uint16_t imageWidth, uint32_t imageNumPix) {
     bool isRight = 0;
     FILE* fp;
     if ((fp = fopen("dummyArray.csv", "w")) == NULL) {
@@ -19,7 +26,7 @@ int saveArrayDumb(double* imageResult, uint16_t imageWidth, uint32_t imageNumPix
     for (int i = 0; i < imageNumPix; i++)
     {
         isRight = (0 == ((i + 1) % imageWidth));
-        fprintf(fp, "%f", imageResult[i]);
+        fprintf(fp, "%i", imageResult[i]);
         if (isRight)
         {
             fprintf(fp,"%s","\n");
@@ -34,10 +41,13 @@ int saveArrayDumb(double* imageResult, uint16_t imageWidth, uint32_t imageNumPix
 
 
 int main(int argc, char* argv[]) {
-    uint8_t imageWidth = 11;
-    uint8_t imageHeight = 11;
+    uint16_t imageWidth = IMAGE_WIDTH;
+    uint16_t imageHeight = IMAGE_HEIGHT;
     uint32_t imageNumPix = imageWidth * imageHeight;
-    uint16_t imageBuffer[121] = {0};
+    
+    for (unsigned int i = 0; i < IMAGE_WIDTH * IMAGE_HEIGHT; i++) {
+        mask[i] = 1;
+    }
     imageBuffer[imageNumPix / 2] = 100;
 
     // uint16_t kernel[9] = {1, 2, 1, 2, 4, 2, 1, 2, 1}; // gaussian
@@ -47,34 +57,35 @@ int main(int argc, char* argv[]) {
     uint16_t kernel[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1}; // sobel x
     uint16_t kernelSize = 9;
 
-    int32_t imageResult[121] = {0};
-    double imageResultDbl[121] = {0.0};
-
     struct timespec tstart = {0,0};
     struct timespec tend = {0,0};
 
-    int nCalls = 100;
+    int nCalls = 10;
     while (nCalls > 0) {
         nCalls -= 1;
         clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tstart);
 
-        doConvolution(imageBuffer, imageWidth, imageNumPix, kernel, kernelSize, imageResult);
+        doConvolution(imageBuffer, imageWidth, imageNumPix, mask, kernel, kernelSize, imageResult);
+
+        // post process
+        int32_t sqSum = 0.0;
+        for (uint32_t i = 0; i < imageNumPix; i++) {
+            sqSum += imageResult[i] * imageResult[i];
+        }
 
         clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tend);
-        printf("doConvolution took about %.7f seconds\n",
+        printf("doConvolution took about %.7f seconds to calc sqSum %d\n",
             ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
-            ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+            ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec),
+            sqSum);
     }
 
     // gaussian normalize
     // for (uint32_t i = 0; i < imageNumPix; i++) {
     //     imageResultDbl[i] = imageResult[i] / 16.0;
     // }
-    for (uint32_t i = 0; i < imageNumPix; i++) {
-        imageResultDbl[i] = imageResult[i] * 1.0;
-    }
 
-    saveArrayDumb(imageResultDbl, imageWidth, imageNumPix);
+    saveArrayDumb(imageResult, imageWidth, imageNumPix);
 
     return 0;
 }
