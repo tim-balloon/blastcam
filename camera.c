@@ -1129,7 +1129,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     // AF tracking
     uint16_t numFocusPos = 0;
     // A upper bound on focus tries guards against focusing forever
-    uint16_t remainingFocusPos = 100;
+    uint16_t remainingFocusPos = 400; // (2000 step range / 5 steps), a large but reasonable limit
     char focusStrCmd[10] = {'\0'};
 
     // Contrast detect algorithm parameters
@@ -1187,6 +1187,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         return -1;
     }
 
+    // ECM: not sure if this is relevant for my alg - may remove
     // turn dynamic hot pixels off to avoid removing blobs during focusing
     prev_dynamic_hp = all_blob_params.dynamic_hot_pixels;
     if (verbose) {
@@ -1228,6 +1229,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
             if (verbose) {
                 printf("\n> Taking a new image...\n\n");
             }
+            // IS_WAIT returns when image exposure->readout->preprocessing->transfer to memory is complete
             if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
                 const char * last_error_str = printCameraError();
                 printf("Failed to capture new image: %s\n", last_error_str);
@@ -1238,20 +1240,15 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
             photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
             all_astro_params.photo_time = photo_time;
 
-            // get the image from memory
+            // ECM kind of an abuse of the API, but it works, so I'll copy it
             if (is_GetActSeqBuf(camera_handle, &buffer_num, &waiting_mem, &memory) 
                 != IS_SUCCESS) {
                 cam_error = printCameraError();
                 printf("Error retrieving the active image memory: %s.\n", cam_error);
             }
 
-            // ECM: this seems to be required as part of the image capture...
-            // we're probably not using is_FreezeVideo or is_GetActSeqBuf properly.
-            // If you omit this, you'll get the same array in memory over and over
-            usleep(500000); 
-
             // make kst display the filtered image
-            memcpy(memory, output_buffer, CAMERA_WIDTH*CAMERA_HEIGHT);
+            memcpy(output_buffer, memory, CAMERA_WIDTH*CAMERA_HEIGHT);
             // pointer for transmitting to user should point to where image is in memory
             camera_raw = output_buffer;
 
@@ -1262,10 +1259,18 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
                 imageBuffer[i] = (int32_t)memory[i];
             }
 
+            // ECM N.B.: uEye API has functions to calc sharpness in hardware
+            // but they are not supported on our camera. I think they're only
+            // supported on AF-enabled camera models. I implemented it and got
+            // all 0s back. So we do it in software.
+
             // Sobel filter for contrast detection
+            // Usually, you want to judge sharpness based on the magnitude of
+            // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
+            // Because we assume stars are mostly round, we can just take
+            // either and save a convolution.
             doConvolution(imageBuffer, CAMERA_WIDTH, imageNumPix, mask,
                 sobelKernelx, kernelSize, sobelResult);
-
             // Let the sharpness metric be the sum of squared gradients, as
             // estimated by the Sobel operator
             int32_t sobelMetric = 0;
@@ -1273,7 +1278,6 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
                 int32_t result = sobelResult[i];
                 sobelMetric += result * result;
             }
-
             // Save off commanded position and max gradient in image
             if (sobelMetric >= bestFocusGrad) {
                 bestFocusGrad = sobelMetric;
