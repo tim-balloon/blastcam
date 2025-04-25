@@ -682,10 +682,10 @@ void makeMask(char * ib, int i0, int j0, int i1, int j1, int x0, int y0,
  * @brief Function that will do a simple boxcar smoothing of an image.
  * 
  * @param ib "input buffer" the input image with 8 bit depth
- * @param i0 starting row for filtering
- * @param j0 starting column for filtering
- * @param i1 ending row for filtering
- * @param j1 ending column for filtering
+ * @param i0 starting column for filtering
+ * @param j0 starting row for filtering
+ * @param i1 ending column for filtering
+ * @param j1 ending row for filtering
  * @param r_f boxcar filter radius
  * @param filtered_image output image
  */

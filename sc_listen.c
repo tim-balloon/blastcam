@@ -111,10 +111,10 @@ int check_AF_params(struct star_cam_capture data) {
 // int cancelling_auto_focus = 0;
 // flag to stop auto focus mid attempt
 void process_command_packet(struct star_cam_capture data){
-    command_lock = 1; // I am using these now
     // Here we check for in charge
     if (data.inCharge == 1)
     {
+        command_lock = 1; // I am using these now
         if (data.update_logOdds == 1)
         {
             printf("Received update to LOGODDS parameter");
@@ -322,6 +322,7 @@ void process_command_packet(struct star_cam_capture data){
         if (data.update_trigger_mode == 1)
         {
             printf("Received update to TRIGGER MODE parameter\n");
+            printf("Previous value was %d, new value is %d\n", all_trigger_params.trigger_mode, data.trigger_mode);
             all_trigger_params.trigger_mode = data.trigger_mode;
         }
         if (data.update_trigger_timeout_us == 1)
@@ -330,11 +331,11 @@ void process_command_packet(struct star_cam_capture data){
             all_trigger_params.trigger_timeout_us = data.trigger_timeout_us;
         }
         printf("Packet from FC%d processed.\n",data.fc);
+        command_lock = 0;
     } else {
         printf("Commands received from not in charge computer, ignoring them...\n");
         return;
     }
-    command_lock = 0;
     return;
 }
 
