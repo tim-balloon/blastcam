@@ -261,10 +261,17 @@ int initLensAdapter(char * path) {
     options.c_lflag = 0;
     // no re-mapping, no delays
     options.c_oflag = 0;
-    // read does not block
-    options.c_cc[VMIN]  = 1;                       
-    // tenths of seconds for read timeout
-    options.c_cc[VTIME] = 5;
+    // The desired behavior is to listen for up to 99 chars (shorter than the
+    // length of a Birger response), or until the inter-character arrival time
+    // exceeds 0.1 sec after receipt of first char. This effectively caps the
+    // time it takes to return control flow to the rest of the program after a
+    // lens command.
+    // This scheme allows us to avoid usleeping for an arbitrary long time in
+    // the loop, waiting for chars from Birger.
+    // c.f. https://tldp.org/HOWTO/Serial-Programming-HOWTO/x115.html
+    options.c_cc[VMIN] = 99;
+    // (t = VTIME *0.1 s)
+    options.c_cc[VTIME] = 1;
     // shut off xon/xoff control
     options.c_iflag &= ~(IXON | IXOFF | IXANY);
     options.c_cflag &= ~CSTOPB;
@@ -283,10 +290,6 @@ int initLensAdapter(char * path) {
     options.c_cflag &= ~CRTSCTS;
 
     options.c_iflag |= ICRNL;
-    // sets a read timeout of 2 seconds so it doesn't block forever
-    options.c_lflag &= ~ICANON;
-    options.c_cc[VTIME] = 2;
-    options.c_cc[VMIN] = 0;
 
     // apply changes
     if (tcsetattr(file_descriptor, TCSANOW, &options) < 0) {
@@ -681,8 +684,6 @@ int runCommand(const char * command, int file, char * return_str) {
                 command, file, strerror(errno));
         return -1;
     }
-
-    usleep(1000000);
 
     FD_ZERO(&input);
     FD_SET(file, &input);
