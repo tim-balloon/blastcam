@@ -1,5 +1,36 @@
 #include "convolve.h"
 
+
+/**
+ * @brief Numerical recipes jumpscare! Section 14.1, first moment of an array
+ * @details "Given an array of data[1..n], this routine returns its mean ave,
+ * average deviation adev, standard deviation sdev, variance var, skewness
+ * skew, and kurtosis curt. Abridged version of Sec. 14.1 for mean value only.
+ * @param data pointer to array of length n
+ * @param length of data array and denominator in mean
+ * @returns The truncated floating point mean, bounded by [INT32_MIN, INT32_MAX]
+ */
+int32_t average(uint32_t* data, uint32_t n) {
+    float summed;
+    float average_float;
+    if (n < 1U) {
+        return 0U;
+    }
+    summed = 0.0;
+    for (uint32_t j = 1; j <= n;j ++ ) {
+        summed += data[j];
+    }
+    average_float = truncf(summed / n);
+    if (average_float >= INT32_MAX) {
+        return INT32_MAX;
+    } else if (average_float <= INT32_MIN) {
+        return INT32_MIN;
+    } else {
+        return (int32_t)average_float;
+    }
+}
+
+
 /**
  * @brief Returns the 9 pixels including and surrounding the given pixel index.
  * 
@@ -8,6 +39,7 @@
  * bottom pixels are `imageWidth` indices apart. For edge cases, place 0s in
  * `neighborhood`, to zero out that term in convolution.
  * @param[in] imageBuffer contiguous memory containing original pixel values
+ * @param imageMean mean value of image, for proper handling of edges
  * @param pixelIndex raw row-major index into image memory
  * @param imageWidth number of columns in a single image row
  * @param imageNumPix number of columns x number of rows in image
@@ -16,6 +48,7 @@
  */
 void getNeighborhood(
     int32_t* imageBuffer,
+    int32_t imageMean,
     uint32_t pixelIndex,
     uint16_t imageWidth,
     uint32_t imageNumPix,
@@ -25,17 +58,17 @@ void getNeighborhood(
     bool isBottom = ((int64_t)pixelIndex - imageWidth) < 0;
     bool isTop = (pixelIndex + imageWidth) >= imageNumPix;
 
-    // If not blocked by image bound guards, return pixel value, else return 0
-    neighborhood[0] = (!isBottom && !isLeft)     ? imageBuffer[pixelIndex - imageWidth - 1] : 0U;
-    neighborhood[1] = (!isBottom)                ? imageBuffer[pixelIndex - imageWidth]     : 0U;
-    neighborhood[2] = (!isBottom && !isRight)    ? imageBuffer[pixelIndex - imageWidth + 1] : 0U;
-    neighborhood[3] = (!isLeft)                  ? imageBuffer[pixelIndex - 1]              : 0U;
+    // If not blocked by image bound guards, return pixel value, else return image mean value
+    neighborhood[0] = (!isBottom && !isLeft)     ? imageBuffer[pixelIndex - imageWidth - 1] : imageMean;
+    neighborhood[1] = (!isBottom)                ? imageBuffer[pixelIndex - imageWidth]     : imageMean;
+    neighborhood[2] = (!isBottom && !isRight)    ? imageBuffer[pixelIndex - imageWidth + 1] : imageMean;
+    neighborhood[3] = (!isLeft)                  ? imageBuffer[pixelIndex - 1]              : imageMean;
     // ought to be limited by caller's for loop, but belt & suspenders
-    neighborhood[4] = (pixelIndex < imageNumPix) ? imageBuffer[pixelIndex]                  : 0U;
-    neighborhood[5] = (!isRight)                 ? imageBuffer[pixelIndex + 1]              : 0U;
-    neighborhood[6] = (!isTop && !isLeft)        ? imageBuffer[pixelIndex + imageWidth - 1] : 0U;
-    neighborhood[7] = (!isTop)                   ? imageBuffer[pixelIndex + imageWidth]     : 0U;
-    neighborhood[8] = (!isTop && !isRight)       ? imageBuffer[pixelIndex + imageWidth + 1] : 0U;
+    neighborhood[4] = (pixelIndex < imageNumPix) ? imageBuffer[pixelIndex]                  : imageMean;
+    neighborhood[5] = (!isRight)                 ? imageBuffer[pixelIndex + 1]              : imageMean;
+    neighborhood[6] = (!isTop && !isLeft)        ? imageBuffer[pixelIndex + imageWidth - 1] : imageMean;
+    neighborhood[7] = (!isTop)                   ? imageBuffer[pixelIndex + imageWidth]     : imageMean;
+    neighborhood[8] = (!isTop && !isRight)       ? imageBuffer[pixelIndex + imageWidth + 1] : imageMean;
 }
 
 
@@ -70,7 +103,8 @@ int32_t convolve(int32_t* array, int16_t* kernel, uint8_t kernelSize) {
  * The primary application will be autofocusing. For filtering large-scale
  * noise like PMCs, a variable-radius filter is required.
  * 
- * @param[in] imageBuffer 
+ * @param[in] imageBuffer
+ * @param imageMean
  * @param imageWidth 
  * @param imageNumPix 
  * @param[in] mask hot pixel mask, whether or not to include pixel in calculations
@@ -80,6 +114,7 @@ int32_t convolve(int32_t* array, int16_t* kernel, uint8_t kernelSize) {
  */
 void doConvolution(
     int32_t* imageBuffer,
+    int32_t imageMean,
     uint16_t imageWidth,
     uint32_t imageNumPix,
     unsigned char* mask,
@@ -89,7 +124,7 @@ void doConvolution(
     // statically allocate this array for (re)use throughout the run
     int32_t neighborhood[9] = {0};
     for (uint32_t i = 0; i < imageNumPix; i++) {
-        getNeighborhood(imageBuffer, i, imageWidth, imageNumPix, neighborhood);
+        getNeighborhood(imageBuffer, imageMean, i, imageWidth, imageNumPix, neighborhood);
         imageResult[i] = convolve(neighborhood, kernel, kernelSize) * (int32_t)(mask[i]);
     }
 }

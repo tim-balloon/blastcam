@@ -1264,12 +1264,16 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
             // supported on AF-enabled camera models. I implemented it and got
             // all 0s back. So we do it in software.
 
+            // Used for edge cases in convolution and later for normalizing
+            // the contrast metric
+            int32_t imageAverage = average(imageBuffer, imageNumPix);
+
             // Sobel filter for contrast detection
             // Usually, you want to judge sharpness based on the magnitude of
             // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
             // Because we assume stars are mostly round, we can just take
             // either and save a convolution.
-            doConvolution(imageBuffer, CAMERA_WIDTH, imageNumPix, mask,
+            doConvolution(imageBuffer, imageAverage, CAMERA_WIDTH, imageNumPix, mask,
                 sobelKernelx, kernelSize, sobelResult);
             // Let the sharpness metric be the sum of squared gradients, as
             // estimated by the Sobel operator
@@ -1278,11 +1282,20 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
                 int32_t result = sobelResult[i];
                 sobelMetric += result * result;
             }
+
+            // We normalize by something proportional to the shot noise in the
+            // image to handle cases where the shot noise, and thus the sum of
+            // squared gradients, is changing rapidly during an AF run
+            if (0 != imageAverage) {
+                sobelMetric /= imageAverage;
+            }
+
             // Save off commanded position and max gradient in image
             if (sobelMetric >= bestFocusGrad) {
                 bestFocusGrad = sobelMetric;
                 bestFocusPos = (int32_t)all_camera_params->focus_position;
             }
+
             // Save off data in AF logfile
             // TODO: FIXME: flux is int, sobelMetric is int32_t...
             // sobelMetric is gradient sharpness metric, not flux,
