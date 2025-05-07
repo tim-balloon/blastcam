@@ -36,8 +36,10 @@ int send_data = 0;
 int taking_image = 0;
 int default_focus_photos = 3;
 int buffer_num, shutting_down, mem_id;
-uint8_t * memory, * waiting_mem, * mem_starting_ptr; //we want raw bytes
+uint16_t * memory, * waiting_mem, * mem_starting_ptr; //we want raw bytes
 unsigned char * mask;
+
+uint16_t unpacked_image[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
 // for printing camera errors
 const char * cam_error;
 // 'curr' = current, 'pc' = pixel clock, 'fps' = frames per sec, 
@@ -274,7 +276,7 @@ void closeCamera() {
     
     // don't close a camera that doesn't exist yet!
     if ((mem_starting_ptr != NULL) && (camera_handle <= 254)) { 
-        is_FreeImageMem(camera_handle, mem_starting_ptr, mem_id);
+        is_FreeImageMem(camera_handle, (char *)mem_starting_ptr, mem_id);
         is_ExitCamera(camera_handle);
     }
 }
@@ -469,7 +471,7 @@ int loadCamera() {
     }
 
     // set display mode and then get it to verify
-	if (is_SetColorMode(camera_handle, IS_CM_SENSOR_RAW8) != IS_SUCCESS) {
+	if (is_SetColorMode(camera_handle, IS_CM_SENSOR_RAW12) != IS_SUCCESS) {
         cam_error = printCameraError();
         printf("Error setting color mode: %s.\n", cam_error);
         return -1;
@@ -487,7 +489,7 @@ int loadCamera() {
     }
  	
     // allocate camera memory
-	color_depth = 24; 
+	color_depth = 16; 
 	if (is_AllocImageMem(camera_handle, sensorInfo.nMaxWidth, 
                          sensorInfo.nMaxHeight, color_depth, (char **) &mem_starting_ptr, 
                          &mem_id) != IS_SUCCESS) {
@@ -497,7 +499,7 @@ int loadCamera() {
 	}
 
     // set memory for image (make memory pointer active)
-	if (is_SetImageMem(camera_handle, mem_starting_ptr, mem_id) != IS_SUCCESS) {
+	if (is_SetImageMem(camera_handle, (char *)mem_starting_ptr, mem_id) != IS_SUCCESS) {
         cam_error = printCameraError();
         printf("Error setting image memory: %s.\n", cam_error);
         return -1;
@@ -1434,7 +1436,6 @@ int doCameraAndAstrometry() {
             free(unpacked_image);
         }
 
-        unpacked_image = malloc(sizeof(uint16_t) * total_pixels); //allocate 16bits per pixel
         unpacked_alloc_size = total_pixels;
         if (unpacked_image == NULL){
             fprintf(stderr, "Failed to allocate unpacket image buffer\n");
@@ -1442,7 +1443,7 @@ int doCameraAndAstrometry() {
         }
     }
 
-    unpack12Bit((uint8_t *)memory, unpacked_image,total_pixels);
+    unpack_mono12(memory,unpacked_image,total_pixels);
 
     // testing pictures that have already been taken
     if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
@@ -1521,8 +1522,7 @@ int doCameraAndAstrometry() {
     }
 
     // make kst display the filtered image 
-    //TODO: I think this line is wrong. follow up ATW
-    memcpy(unpacked_image, output_buffer, CAMERA_WIDTH*CAMERA_HEIGHT*sizeof(uint16_t)); 
+    memcpy(output_buffer, unpacked_image, CAMERA_WIDTH*CAMERA_HEIGHT*sizeof(uint16_t)); 
 
     // pointer for transmitting to user should point to where image is in memory
     camera_raw = output_buffer;
