@@ -122,10 +122,10 @@ void verifyBlobParams() {
 }
 
 /* function to unpack 12bit pixels
-**
+** this is not used but left in for posterity
 **
 */
-void unpack12Bit(uint8_t * packed, uint16_t * unpacked, int num_pixels){
+// void unpack12Bit(uint8_t * packed, uint16_t * unpacked, int num_pixels){
 /*
 ** packed = array of 3 bytes
 ** unpacked = array of 16 bit values
@@ -151,14 +151,25 @@ void unpack12Bit(uint8_t * packed, uint16_t * unpacked, int num_pixels){
 ** second 4 bits of second byte combined with third byte with OR
 **
 */
-    for (int i=0,j=0; i<num_pixels; i+=2,j+=3){
-        uint16_t p1 = packed[j] | ((packed[j+1] & 0x0F) << 8); 
-        uint16_t p2 = ((packed[j+1] >> 4) & 0x0F | packed[j+2] << 4);
-        unpacked[i] = p1;
-        unpacked[i+1] = p2;
-    }
-}
+//     for (int i=0,j=0; i<num_pixels; i+=2,j+=3){
+//         uint16_t p1 = packed[j] | ((packed[j+1] & 0x0F) << 8); 
+//         uint16_t p2 = ((packed[j+1] >> 4) & 0x0F | packed[j+2] << 4);
+//         unpacked[i] = p1;
+//         unpacked[i+1] = p2;
+//     }
+// }
 
+/* function to take 16 bit pixel values which are filled with 12 bits and 
+** mask out the last 4 bits to ensure they are zero and not random garbage
+**
+*/
+void unpack_mono12(uint16_t * packed, uint16_t * unpacked, int num_pixels){
+
+    for (int i =0; i< num_pixels; i++) {
+        unpacked[i] = packed[i] & 0x0FFF; //this masks the last four pixels
+    }
+
+}
 
 /* Helper function to print camera errors.
 ** Input: None.
