@@ -471,7 +471,7 @@ int loadCamera() {
     }
 
     // set display mode and then get it to verify
-	if (is_SetColorMode(camera_handle, IS_CM_SENSOR_RAW12) != IS_SUCCESS) {
+	if (is_SetColorMode(camera_handle, IS_CM_MONO12) != IS_SUCCESS) {
         cam_error = printCameraError();
         printf("Error setting color mode: %s.\n", cam_error);
         return -1;
