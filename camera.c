@@ -511,9 +511,19 @@ int loadCamera() {
         printf("Error getting image memory: %s.\n", cam_error);
         return -1;
     }
+    UINT nRange[3]={0};
+    INT nRet = is_PixelClock(camera_handle,IS_PIXELCLOCK_CMD_GET_RANGE, (void*)nRange,sizeof(nRange));
+    if (nRet == IS_SUCCESS)
+    {
+        UINT nMin = nRange[0];
+        UINT nMax = nRange[1];
+        UINT nInc = nRange[2];
+        printf("clock params = %d, %d, %d \n", nMin, nMax, nInc);
+    }
 
+    
     // how clear images can be is affected by pixelclock and fps 
-    pixelclock = 30;
+    pixelclock = 99;
 	if (is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_SET, 
                       (void *) &pixelclock, sizeof(pixelclock)) != IS_SUCCESS) {
         cam_error = printCameraError();
@@ -1430,16 +1440,17 @@ int doCameraAndAstrometry() {
     int total_pixels = CAMERA_WIDTH * CAMERA_HEIGHT;
     static uint16_t * unpacked_image = NULL;
     static int unpacked_alloc_size=0;
-
+    // unpack_mono12(memory,unpacked_image,total_pixels);
     if (unpacked_image == NULL || unpacked_alloc_size < total_pixels){
         if (unpacked_image != NULL){
             free(unpacked_image);
         }
 
         unpacked_alloc_size = total_pixels;
+        unpacked_image = malloc(total_pixels * sizeof(uint16_t));
         if (unpacked_image == NULL){
-            fprintf(stderr, "Failed to allocate unpacket image buffer\n");
-            return -1;
+            fprintf(stderr, "Failed to allocate unpacked image buffer\n");
+            // return -1;
         }
     }
 
