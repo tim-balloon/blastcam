@@ -374,6 +374,13 @@ int initLensAdapter(char * path) {
 int beginAutoFocus() {
     char focus_str_cmd[10];
 
+    // HACK: always start AF runs by checking current focuser pos, to get right
+    // delta to begin AF run
+    if (runCommand("fp\r", file_descriptor, birger_output) == -1) {
+        printf("Failed to print the new focus position.\n");
+        return -1;
+    }
+
     printf("\n> Beginning the auto-focus process...\n");
     printf("(*) Auto-focusing parameters: start = %d, stop = %d, step = %d.\n", 
            all_camera_params.start_focus_pos, all_camera_params.end_focus_pos,
@@ -391,7 +398,7 @@ int beginAutoFocus() {
     if (runCommand("fp\r", file_descriptor, birger_output) == -1) {
         printf("Failed to print the new focus position.\n");
         return -1;
-    } 
+    }
 
     return 1;
 }

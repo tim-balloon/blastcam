@@ -58,6 +58,9 @@ void getNeighborhood(
     bool isBottom = ((int64_t)pixelIndex - imageWidth) < 0;
     bool isTop = (pixelIndex + imageWidth) >= imageNumPix;
 
+    // HACK: FIXME: sobelmetric returns to 0 when high?
+    imageMean = 0U;
+
     // If not blocked by image bound guards, return pixel value, else return image mean value
     neighborhood[0] = (!isBottom && !isLeft)     ? imageBuffer[pixelIndex - imageWidth - 1] : imageMean;
     neighborhood[1] = (!isBottom)                ? imageBuffer[pixelIndex - imageWidth]     : imageMean;

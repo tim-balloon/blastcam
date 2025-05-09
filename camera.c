@@ -1129,13 +1129,14 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     // AF tracking
     uint16_t numFocusPos = 0;
     // A upper bound on focus tries guards against focusing forever
-    uint16_t remainingFocusPos = 400; // (2000 step range / 5 steps), a large but reasonable limit
+    // If someone accidentally orders an 8000-range, 5-step AF run or worse, we'll
+    // cut out early
+    uint16_t remainingFocusPos = 1600; 
     char focusStrCmd[10] = {'\0'};
 
     // Contrast detect algorithm parameters
     uint16_t sobelKernelx[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
     uint16_t kernelSize = 9;
-    
 
     // Initialize focuser and AF logging
     int bestFocusPos = all_camera_params->focus_position;
@@ -1217,125 +1218,151 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     }
 
     // Loop until all focus positions covered
+    bool hasGoneForward = 0;
+    bool hasGoneBackward = 0;
+    bool atFarEnd = 0;
+    bool atNearEnd = 0;
+    int dir = 1;
+
     while (remainingFocusPos > 0) {
         remainingFocusPos -= 1;
-        if (all_camera_params->focus_position >= 
-            all_camera_params->end_focus_pos) {
+        atFarEnd = (all_camera_params->focus_position >= all_camera_params->end_focus_pos);
+        atNearEnd = (all_camera_params->focus_position < all_camera_params->start_focus_pos);
+        if (atFarEnd) {
+            if (hasGoneForward && !hasGoneBackward) {
+                dir = -1;
+                hasGoneBackward = 1;
+            }
+        }
+        if (atNearEnd && hasGoneBackward) {
             // Break out of AF
             all_camera_params->focus_mode = 0;
+            printf("Quitting autofocus after fulfilling end conditions...\n");
             break;
-        } else {
-            taking_image = 1;
-            if (verbose) {
-                printf("\n> Taking a new image...\n\n");
-            }
-            // IS_WAIT returns when image exposure->readout->preprocessing->transfer to memory is complete
-            if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
-                const char * last_error_str = printCameraError();
-                printf("Failed to capture new image: %s\n", last_error_str);
-            }
-            taking_image = 0;
-
-            gettimeofday(&tv, NULL);
-            photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
-            all_astro_params.photo_time = photo_time;
-
-            // ECM kind of an abuse of the API, but it works, so I'll copy it
-            if (is_GetActSeqBuf(camera_handle, &buffer_num, &waiting_mem, &memory) 
-                != IS_SUCCESS) {
-                cam_error = printCameraError();
-                printf("Error retrieving the active image memory: %s.\n", cam_error);
-            }
-
-            // make kst display the filtered image
-            memcpy(output_buffer, memory, CAMERA_WIDTH*CAMERA_HEIGHT);
-            // pointer for transmitting to user should point to where image is in memory
-            camera_raw = output_buffer;
-
-            // Image unpacking/type conversion
-            // 12-bit unpacking function goes here instead
-            uint32_t imageNumPix = CAMERA_WIDTH * CAMERA_HEIGHT;
-            for (uint32_t i = 0; i < imageNumPix; i++) {
-                imageBuffer[i] = (int32_t)memory[i];
-            }
-
-            // ECM N.B.: uEye API has functions to calc sharpness in hardware
-            // but they are not supported on our camera. I think they're only
-            // supported on AF-enabled camera models. I implemented it and got
-            // all 0s back. So we do it in software.
-
-            // Used for edge cases in convolution and later for normalizing
-            // the contrast metric
-            int32_t imageAverage = average(imageBuffer, imageNumPix);
-
-            // Sobel filter for contrast detection
-            // Usually, you want to judge sharpness based on the magnitude of
-            // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
-            // Because we assume stars are mostly round, we can just take
-            // either and save a convolution.
-            doConvolution(imageBuffer, imageAverage, CAMERA_WIDTH, imageNumPix, mask,
-                sobelKernelx, kernelSize, sobelResult);
-            // Let the sharpness metric be the sum of squared gradients, as
-            // estimated by the Sobel operator
-            int32_t sobelMetric = 0;
-            for (uint32_t i = 0; i < imageNumPix; i++) {
-                int32_t result = sobelResult[i];
-                sobelMetric += result * result;
-            }
-
-            // We normalize by something proportional to the shot noise in the
-            // image to handle cases where the shot noise, and thus the sum of
-            // squared gradients, is changing rapidly during an AF run
-            if (0 != imageAverage) {
-                sobelMetric /= imageAverage;
-            }
-
-            // Save off commanded position and max gradient in image
-            if (sobelMetric >= bestFocusGrad) {
-                bestFocusGrad = sobelMetric;
-                bestFocusPos = (int32_t)all_camera_params->focus_position;
-            }
-
-            // Save off data in AF logfile
-            // TODO: FIXME: flux is int, sobelMetric is int32_t...
-            // sobelMetric is gradient sharpness metric, not flux,
-            // but same diff...har har
-            all_camera_params->flux = (int)sobelMetric;
-            printf("(*) Sobel metric in image for focus %d is %d.\n", 
-                all_camera_params->focus_position,
-                sobelMetric);
-            fprintf(af_file, "%3d\t%5d\n", sobelMetric,
-                    all_camera_params->focus_position);
-            fflush(af_file);
-
-            send_data = 1;
-            // if clients are listening and we want to guarantee data is sent to
-            // them before continuing with auto-focusing, wait until data_sent
-            // confirmation. If there are no clients, no need to slow down auto-
-            // focusing
-            if (num_clients > 0) {
-                while (!telemetry_sent) {
-                    if (verbose) {
-                        printf("> Waiting for data to send to client...\n");
-                    }
-
-                    usleep(1000);
-                }
-            }
-            send_data = 0;
-
-            // Move to next position
-            int focusStep = min(
-                all_camera_params->focus_step,
-                all_camera_params->end_focus_pos -
-                all_camera_params->focus_position);
-            sprintf(focusStrCmd, "mf %i\r", focusStep);
-            if (!cancelling_auto_focus) {
-                shiftFocus(focusStrCmd);
-            }
-            numFocusPos++;
         }
+        if (0 == all_camera_params->focus_mode) {
+            printf("Quitting autofocus by user cancel...\n");
+            break;
+        }
+        taking_image = 1;
+        if (verbose) {
+            printf("\n> Taking a new image...\n\n");
+        }
+        // IS_WAIT returns when image exposure->readout->preprocessing->transfer to memory is complete
+        if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
+            const char * last_error_str = printCameraError();
+            printf("Failed to capture new image: %s\n", last_error_str);
+        }
+        taking_image = 0;
+
+        gettimeofday(&tv, NULL);
+        photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
+        all_astro_params.photo_time = photo_time;
+
+        // ECM kind of an abuse of the API, but it works, so I'll copy it
+        if (is_GetActSeqBuf(camera_handle, &buffer_num, &waiting_mem, &memory) 
+            != IS_SUCCESS) {
+            cam_error = printCameraError();
+            printf("Error retrieving the active image memory: %s.\n", cam_error);
+        }
+
+        // make kst display the filtered image
+        memcpy(output_buffer, memory, CAMERA_WIDTH*CAMERA_HEIGHT);
+        // pointer for transmitting to user should point to where image is in memory
+        camera_raw = output_buffer;
+
+        // Image unpacking/type conversion
+        // 12-bit unpacking function goes here instead
+        uint32_t imageNumPix = CAMERA_WIDTH * CAMERA_HEIGHT;
+        for (uint32_t i = 0; i < imageNumPix; i++) {
+            imageBuffer[i] = (int32_t)memory[i];
+        }
+
+        // ECM N.B.: uEye API has functions to calc sharpness in hardware
+        // but they are not supported on our camera. I think they're only
+        // supported on AF-enabled camera models. I implemented it and got
+        // all 0s back. So we do it in software.
+
+        // Used for edge cases in convolution and later for normalizing
+        // the contrast metric
+        int32_t imageAverage = average(imageBuffer, imageNumPix);
+
+        // Sobel filter for contrast detection
+        // Usually, you want to judge sharpness based on the magnitude of
+        // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
+        // Because we assume stars are mostly round, we can just take
+        // either and save a convolution.
+        doConvolution(imageBuffer, imageAverage, CAMERA_WIDTH, imageNumPix, mask,
+            sobelKernelx, kernelSize, sobelResult);
+        // Let the sharpness metric be the sum of squared gradients, as
+        // estimated by the Sobel operator
+        int64_t sobelMetric = 0;
+        for (uint32_t i = 0; i < imageNumPix; i++) {
+            int32_t result = sobelResult[i];
+            sobelMetric += result * result;
+        }
+
+        // We normalize by something proportional to the shot noise in the
+        // image to handle cases where the shot noise, and thus the sum of
+        // squared gradients, is changing rapidly during an AF run
+        // if (0 != imageAverage) {
+        //     sobelMetric /= imageAverage;
+        // }
+
+        // Save off commanded position and max gradient in image
+        if (sobelMetric >= bestFocusGrad) {
+            bestFocusGrad = sobelMetric;
+            bestFocusPos = (int32_t)all_camera_params->focus_position;
+        }
+
+        // Save off data in AF logfile
+        // TODO: FIXME: flux is int, sobelMetric is int64_t...
+        // sobelMetric is gradient sharpness metric, not flux,
+        // but same diff...har har
+        all_camera_params->flux = (int)sobelMetric;
+        printf("(*) Sobel metric in image for focus %d is %li or %li.\n",
+            all_camera_params->focus_position,
+            sobelMetric, (int)sobelMetric);
+        fprintf(af_file, "%3li\t%5d\n", sobelMetric,
+                all_camera_params->focus_position);
+        fflush(af_file);
+
+        send_data = 1;
+        // if clients are listening and we want to guarantee data is sent to
+        // them before continuing with auto-focusing, wait until data_sent
+        // confirmation. If there are no clients, no need to slow down auto-
+        // focusing
+        if (num_clients > 0) {
+            while (!telemetry_sent) {
+                if (verbose) {
+                    printf("> Waiting for data to send to client...\n");
+                }
+
+                usleep(1000);
+            }
+        }
+        send_data = 0;
+
+        // Move to next position
+        // if (all_camera_params->focus_position >= all_camera_params->end_focus_pos) {
+        //     all_camera_params->focus_step *= -1;
+        // } // two-way AF
+        // int focusStep = min(
+        //     all_camera_params->focus_step,
+        //     all_camera_params->end_focus_pos -
+        //     all_camera_params->focus_position);
+        int focusStep = all_camera_params->focus_step * dir;
+        sprintf(focusStrCmd, "mf %i\r", focusStep);
+        if (!cancelling_auto_focus) {
+            shiftFocus(focusStrCmd);
+        }
+        numFocusPos++;
+        hasGoneForward = 1;
     }
+
+    // Necessary to avoid going into legacy autofocus mode if we drop out
+    // due to too many AF attempts.
+    all_camera_params->focus_mode = 0;
 
     if (verbose) {
         printf("Autofocus concluded with %d tries remaining.\n", remainingFocusPos);
@@ -1353,6 +1380,23 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
                 "so just use that.\n");
         bestFocusPos = all_camera_params->min_focus_pos;
     }
+    // Due to backlash, return to the optimal focus position via the direction
+    // we measured it: move to beginning
+    if (beginAutoFocus() < 1) {
+        printf("Error moving back to beginning of auto-focusing range. Skipping to taking "
+                "observing images...\n");
+
+        // return to default focus position
+        if (defaultFocusPosition() < 1) {
+            printf("Error moving to default focus position.\n");
+            closeCamera();
+            return -1;
+        }
+
+        // abort auto-focusing process
+        all_camera_params->focus_mode = 0;
+    }
+    // and THEN move to the optimal pos.
     sprintf(focusStrCmd, "mf %i\r", 
         bestFocusPos - all_camera_params->focus_position);
     shiftFocus(focusStrCmd);
