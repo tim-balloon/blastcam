@@ -576,11 +576,11 @@ int loadCamera() {
 ** Output: None (void).
 */
 void setSaveImage() {
-    ImageFileParams.pwchFileName = L"save1.bmp";
+    ImageFileParams.pwchFileName = L"save1.png";
     ImageFileParams.pnImageID = NULL;
     ImageFileParams.ppcImageMem = NULL;
-    ImageFileParams.nQuality = 80;
-    ImageFileParams.nFileType = IS_IMG_BMP;
+    ImageFileParams.nQuality = 100;
+    ImageFileParams.nFileType = IS_IMG_PNG;
 }
 
 /* Function to mask hot pixels accordinging to static and dynamic maps.
@@ -1777,6 +1777,7 @@ int doCameraAndAstrometry() {
     // testing pictures that have already been taken
     // if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
     //                      &memory) == 1) {
+    //                      (char **) &memory) == 1) {
     //     if (verbose) {
     //         printf("Successfully loaded test picture.\n");
     //     }
@@ -1888,7 +1889,7 @@ int doCameraAndAstrometry() {
 
         strftime(time_str, sizeof(time_str), "%Y-%m-%d_%H:%M:%S", tm_info);
         sprintf(date, "/home/starcam/Desktop/TIMSC/BMPs/auto_focus_at_%d_"
-                      "brightest_blob_%d_at_x%d_y%d_%s.bmp", 
+                      "brightest_blob_%d_at_x%d_y%d_%s.png", 
                 all_camera_params.focus_position, brightest_blob, 
                 brightest_blob_x, brightest_blob_y, time_str);
         if (verbose) {
@@ -2015,7 +2016,7 @@ int doCameraAndAstrometry() {
         }
 
         strftime(date, sizeof(date), "/home/starcam/Desktop/TIMSC/BMPs/"
-                                     "saved_image_%Y-%m-%d_%H:%M:%S.bmp", 
+                                     "saved_image_%Y-%m-%d_%H:%M:%S.png", 
                                      tm_info);
         swprintf(filename, 200, L"%s", date);
 
@@ -2070,16 +2071,16 @@ int doCameraAndAstrometry() {
     // save image for future reference
     ImageFileParams.pwchFileName = filename;
     if (is_ImageFile(camera_handle, IS_IMAGE_FILE_CMD_SAVE, 
-                    (void *) &ImageFileParams, sizeof(ImageFileParams)) == -1) {
+                    (void *) &ImageFileParams, sizeof(ImageFileParams)) != IS_SUCCESS) {
         const char * last_error_str = printCameraError();
         printf("Failed to save image: %s\n", last_error_str);
     }
 
     wprintf(L"Saving to \"%s\"\n", filename);
     // unlink whatever the latest saved image was linked to before
-    unlink("/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.bmp");
+    unlink("/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
     // sym link current date to latest image for live Kst updates
-    symlink(date, "/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.bmp");
+    symlink(date, "/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
 
     // make a table of blobs for Kst
     if (makeTable("makeTable.txt", star_mags, star_x, star_y, blob_count) != 1) {
