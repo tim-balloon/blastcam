@@ -462,7 +462,8 @@ int loadCamera() {
 
     // initialize camera
 	if (is_InitCamera(&camera_handle, NULL) != IS_SUCCESS) {
-        printf("Error initializing camera in loadCamera().\n");
+        cam_error = printCameraError();
+        printf("Error initializing camera in loadCamera(): %s.\n", cam_error);
         return -1;
 	}
   

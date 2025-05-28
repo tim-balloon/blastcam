@@ -45,7 +45,6 @@ struct fits_metadata_t {
     char fztile[4]; // FZTILE   - 'ROW', 'WHOLE', or '(n,m)'
 
     // Sensor settings
-    // Some could technically be queried at runtime, but functionally are consts
 
     char detector[32]; // DETECTOR: sensor name
     uint8_t bitdepth; // BITDEPTH: requested bit depth of camera, not equivalent to BITPIX

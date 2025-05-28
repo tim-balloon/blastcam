@@ -167,7 +167,6 @@ int writeMetadata(fitsfile* fptr, struct fits_metadata_t* pMetadata)
 }
 
 
-// TODO(evanmayer): implement compression: either RICE_1, .gz, or both
 // TODO(evanmayer): implement checksum writing
 // TODO(evanmayer): implement accurate timestamping
 /**
