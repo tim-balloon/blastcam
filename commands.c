@@ -83,8 +83,8 @@ int command_lock = 0;
 int cancelling_auto_focus = 0;
 // assume non-verbose output
 int verbose = 0;
-uint16_t* camera_raw[CAMERA_WIDTH * CAMERA_HEIGHT] = NULL;
-// if 0, then camera is not closing, so keep solving astrometry       
+uint16_t camera_raw[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
+// if 0, then camera is not closing, so keep solving astrometry
 int shutting_down = 0;
 // return values for terminating the threads
 int astro_thread_ret, client_thread_ret;

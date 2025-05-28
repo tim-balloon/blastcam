@@ -487,11 +487,11 @@ int loadCamera() {
         unsigned int nMin = nRange[0];
         unsigned int nMax = nRange[1];
         unsigned int nInc = nRange[2];
-        printf("|\tPixelclock min, max, inc: %d, %d, %d \t\t |\n", nMin, nMax, nInc);
+        printf("|\tPixelclock min, max, inc: %d, %d, %d  \t\t |\n", nMin, nMax, nInc);
     }
 
     // how clear images can be is affected by pixelclock and fps 
-    pixelclock = 99;
+    pixelclock = 25;
     if (is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_SET, 
                       (void *) &pixelclock, sizeof(pixelclock)) != IS_SUCCESS) {
         cam_error = printCameraError();
@@ -1500,10 +1500,10 @@ int doCameraAndAstrometry() {
     }
 
     // make kst display the filtered image 
-    memcpy(output_buffer, unpacked_image, CAMERA_WIDTH*CAMERA_HEIGHT*sizeof(uint16_t)); 
+    memcpy(output_buffer, unpacked_image, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
 
-    // pointer for transmitting to user should point to where image is in memory
-    camera_raw = output_buffer;
+    // pass off the image bytes for sending to clients
+    memcpy(camera_raw, output_buffer, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
 
     // get current time right after exposure
     if (clock_gettime(CLOCK_REALTIME, &camera_tp_beginning) == -1) {
@@ -1536,7 +1536,7 @@ int doCameraAndAstrometry() {
 
         strftime(time_str, sizeof(time_str), "%Y-%m-%d_%H:%M:%S", tm_info);
         sprintf(date, "/home/starcam/Desktop/TIMSC/BMPs/auto_focus_at_%d_"
-                      "brightest_blob_%d_at_x%d_y%d_%s.bmp", 
+                      "brightest_blob_%d_at_x%d_y%d_%s.png", 
                 all_camera_params.focus_position, brightest_blob, 
                 brightest_blob_x, brightest_blob_y, time_str);
         if (verbose) {
@@ -1663,7 +1663,7 @@ int doCameraAndAstrometry() {
         }
 
         strftime(date, sizeof(date), "/home/starcam/Desktop/TIMSC/BMPs/"
-                                     "saved_image_%Y-%m-%d_%H:%M:%S.bmp", 
+                                     "saved_image_%Y-%m-%d_%H:%M:%S.png", 
                                      tm_info);
         swprintf(filename, 200, L"%s", date);
 
@@ -1725,9 +1725,9 @@ int doCameraAndAstrometry() {
 
     wprintf(L"Saving to \"%s\"\n", filename);
     // unlink whatever the latest saved image was linked to before
-    unlink("/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.bmp");
+    unlink("/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
     // sym link current date to latest image for live Kst updates
-    symlink(date, "/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.bmp");
+    symlink(date, "/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
 
     // make a table of blobs for Kst
     if (makeTable("makeTable.txt", star_mags, star_x, star_y, blob_count) != 1) {
