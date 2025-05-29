@@ -317,6 +317,12 @@ int initLensAdapter(char * path) {
         printf("Failed to learn current focus range.\n");
         return -1;
     }
+
+    // OK to usleep here, because we DO expect this move to take an appreciable
+    // amount of time, and we do this one time on init.
+    usleep(1000000);
+
+    // After learning focus range, try to move to infinity.
     if (runCommand("mi\r", file_descriptor, birger_output) == -1) {
         printf("Failed to move focus position to infinity.\n");
         return -1;
