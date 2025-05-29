@@ -480,7 +480,18 @@ int loadCamera() {
         return -1;
     }
 
-    // Check pixelclock allowed values
+    // set frame rate
+    fps = 10;
+    if (is_SetFrameRate(camera_handle, IS_GET_FRAMERATE, (void *) &fps) 
+        != IS_SUCCESS) {
+        cam_error = printCameraError();
+        printf("Error setting frame rate: %s.\n", cam_error);
+        return -1;
+    }
+
+    pixelclock = 25;
+    // Check pixelclock allowed values, in case settings changes have caused it
+    // to differ
     unsigned int nRange[3] = {0};
     int nRet = is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_GET_RANGE, (void*)nRange, sizeof(nRange));
     if (nRet == IS_SUCCESS)
@@ -489,10 +500,11 @@ int loadCamera() {
         unsigned int nMax = nRange[1];
         unsigned int nInc = nRange[2];
         printf("|\tPixelclock min, max, inc: %d, %d, %d  \t\t |\n", nMin, nMax, nInc);
+        
+        pixelclock = nMin;
     }
 
     // how clear images can be is affected by pixelclock and fps 
-    pixelclock = 25;
     if (is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_SET, 
                       (void *) &pixelclock, sizeof(pixelclock)) != IS_SUCCESS) {
         cam_error = printCameraError();
@@ -504,15 +516,6 @@ int loadCamera() {
                   sizeof(curr_pc));
     if (verbose) {
         printf("|\tPixel clock: %i\t\t\t\t\t  |\n", curr_pc);
-    }
-
-    // set frame rate
-    fps = 10;
-    if (is_SetFrameRate(camera_handle, IS_GET_FRAMERATE, (void *) &fps) 
-        != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting frame rate: %s.\n", cam_error);
-        return -1;
     }
 
     // set trigger to software mode (call is_FreezeVideo to take single picture 
