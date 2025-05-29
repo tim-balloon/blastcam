@@ -245,7 +245,7 @@ void * processClient(void * for_client_thread) {
             // if another client sends commands at the same time, wait until 
             // they are done
             while (command_lock) {
-                usleep(100000);
+                usleep(1000);
             }
             // now it's this client's turn to execute commands (lock)
             command_lock = 1;

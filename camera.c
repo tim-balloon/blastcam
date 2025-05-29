@@ -421,7 +421,8 @@ int loadCamera() {
 
     // initialize camera
     if (is_InitCamera(&camera_handle, NULL) != IS_SUCCESS) {
-        printf("Error initializing camera in loadCamera().\n");
+        cam_error = printCameraError();
+        printf("Error initializing camera in loadCamera(): %s.\n", cam_error);
         return -1;
     }
   
@@ -623,6 +624,7 @@ void makeMask(uint16_t * ib, int i0, int j0, int i1, int j1, int x0, int y0,
     
     int cutoff = all_blob_params.spike_limit*100.0;
 
+    // Zero out borders of mask array
     for (i = i0; i < i1; i++) {
         mask[i + CAMERA_WIDTH*j0] = mask[i + (j1-1)*CAMERA_WIDTH] = 0;
     }
@@ -853,7 +855,7 @@ int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x,
     // lowpass filter the image - reduce noise.
     boxcarFilterImage(input_buffer, i0, j0, i1, j1, all_blob_params.r_smooth, 
                       ic);
-        // test code to grab real filtered images if we want.
+    // test code to grab real filtered images if we want.
     /* for (int j = 0; j < CAMERA_HEIGHT; j++)
     {
         for (int i = 0; i < CAMERA_WIDTH; i++)
@@ -1718,7 +1720,7 @@ int doCameraAndAstrometry() {
     // save image for future reference
     ImageFileParams.pwchFileName = filename;
     if (is_ImageFile(camera_handle, IS_IMAGE_FILE_CMD_SAVE, 
-                    (void *) &ImageFileParams, sizeof(ImageFileParams)) == -1) {
+                    (void *) &ImageFileParams, sizeof(ImageFileParams)) != IS_SUCCESS) {
         const char * last_error_str = printCameraError();
         printf("Failed to save image: %s\n", last_error_str);
     }
