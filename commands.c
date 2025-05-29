@@ -583,15 +583,10 @@ int main(int argc, char * argv[]) {
             case 4:
                 // number of cameras connected to PC
                 printHeader();
-                int num_cams;
-
-                if (is_GetNumberOfCameras(&num_cams) != IS_SUCCESS) {
-                    printf("Cannot get # of cameras connected to computer.\n");
-                    return 0;
-                } 
+                int num_cams = 0;
+                int res = getNumberOfCameras(&num_cams);
                 printf("Number of cameras connected to computer: %d.\n",
                        num_cams);
-
                 break;
             case 5:
                 // display network infomation
