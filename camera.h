@@ -6,6 +6,7 @@
 #define CAMERA_WIDTH   1936 	 // [px]
 #define CAMERA_HEIGHT  1216	     // [px]
 #define CAMERA_MARGIN  0		 // [px]
+#define CAMERA_MAX_PIXVAL 4095 //  2**12
 // pixel scale search range bounds -> 6.0 to 6.5 for SO, 6.0 to 7.0 for BLAST
 #define MIN_PS         6.0       // [arcsec/px]
 #define MAX_PS         7.0		 // [arcsec/px]
@@ -62,7 +63,6 @@ int makeTable(char * filename, double * star_mags, double * star_x,
               double * star_y, int blob_count);
 int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x, 
               double ** star_y, double ** star_mags, uint16_t * output_buffer);
-// void unpack12Bit(uint8_t * packed, uint16_t * unpacked, int num_pixels);
 void unpack_mono12(uint16_t * packed, uint16_t * unpacked, int num_pixels);
 
-#endif 
+#endif

@@ -83,8 +83,8 @@ int command_lock = 0;
 int cancelling_auto_focus = 0;
 // assume non-verbose output
 int verbose = 0;
-void * camera_raw = NULL;
-// if 0, then camera is not closing, so keep solving astrometry       
+uint16_t camera_raw[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
+// if 0, then camera is not closing, so keep solving astrometry
 int shutting_down = 0;
 // return values for terminating the threads
 int astro_thread_ret, client_thread_ret;
@@ -245,7 +245,7 @@ void * processClient(void * for_client_thread) {
             // if another client sends commands at the same time, wait until 
             // they are done
             while (command_lock) {
-                usleep(100000);
+                usleep(1000);
             }
             // now it's this client's turn to execute commands (lock)
             command_lock = 1;
@@ -379,7 +379,7 @@ void * processClient(void * for_client_thread) {
         } 
 
 
-        if (send(socket, camera_raw, CAMERA_WIDTH*CAMERA_HEIGHT, 
+        if (send(socket, camera_raw, sizeof(camera_raw), 
                  MSG_NOSIGNAL) <= 0) {
             printf("Client dropped the connection.\n");
             break;

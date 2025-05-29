@@ -261,10 +261,17 @@ int initLensAdapter(char * path) {
     options.c_lflag = 0;
     // no re-mapping, no delays
     options.c_oflag = 0;
-    // read does not block
-    options.c_cc[VMIN]  = 1;                       
-    // tenths of seconds for read timeout
-    options.c_cc[VTIME] = 5;
+    // The desired behavior is to listen for up to 99 chars (longer than the
+    // length of a Birger response), or until the inter-character arrival time
+    // exceeds 0.1 sec after receipt of first char. This effectively caps the
+    // time it takes to return control flow to the rest of the program after a
+    // lens command.
+    // This scheme allows us to avoid usleeping for an arbitrary long time in
+    // the loop, waiting for chars from Birger.
+    // c.f. https://tldp.org/HOWTO/Serial-Programming-HOWTO/x115.html
+    options.c_cc[VMIN] = 99;
+    // (t = VTIME *0.1 s)
+    options.c_cc[VTIME] = 1;
     // shut off xon/xoff control
     options.c_iflag &= ~(IXON | IXOFF | IXANY);
     options.c_cflag &= ~CSTOPB;
@@ -371,6 +378,13 @@ int initLensAdapter(char * path) {
 int beginAutoFocus() {
     char focus_str_cmd[10];
 
+    // Always start AF runs by checking current focuser pos, to get right
+    // delta to begin AF run.
+    if (runCommand("fp\r", file_descriptor, birger_output) == -1) {
+        printf("Failed to print the new focus position.\n");
+        return -1;
+    }
+
     printf("\n> Beginning the auto-focus process...\n");
     printf("(*) Auto-focusing parameters: start = %d, stop = %d, step = %d.\n", 
            all_camera_params.start_focus_pos, all_camera_params.end_focus_pos,
@@ -388,7 +402,7 @@ int beginAutoFocus() {
     if (runCommand("fp\r", file_descriptor, birger_output) == -1) {
         printf("Failed to print the new focus position.\n");
         return -1;
-    } 
+    }
 
     return 1;
 }
@@ -681,8 +695,6 @@ int runCommand(const char * command, int file, char * return_str) {
                 command, file, strerror(errno));
         return -1;
     }
-
-    usleep(1000000);
 
     FD_ZERO(&input);
     FD_SET(file, &input);

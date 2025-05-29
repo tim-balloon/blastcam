@@ -123,55 +123,21 @@ void verifyBlobParams() {
     printf("+---------------------------------------------------------+\n\n");
 }
 
-/* function to unpack 12bit pixels
-** this is not used but left in for posterity
-**
-*/
-// void unpack12Bit(uint8_t * packed, uint16_t * unpacked, int num_pixels){
-/*
-** packed = array of 3 bytes
-** unpacked = array of 16 bit values
-** num_pixels = number of pixels to unpack.
-*/
 
-/*
-** for loop explanation
-**
-** 0x0F is the lower 4 bits of the byte
-**
-** packed[j] | ((packed[j+1] & 0x0F) << 8) 
-** packed[j] is the first byte, 
-** packed[j+1] & 0x0F : masks the first four bits of the second byte
-** (packed[j+1] & 0x0F) << 8 : shifts bits up to positions 8-11
-** first byte and first four bits of second byte are combined with OR
-**
-** ((packed[j+1] >> 4) & 0x0F | packed[j+2] << 4)
-** packed[j+1] >> 4 : shift the second byte putting upper 4 bits into first four 
-** positions of new 12-bit value
-** (packed[j+1] >> 4) & 0x0F mask out any remaining bits 
-** packed[J+2] << 4 shift third byte up
-** second 4 bits of second byte combined with third byte with OR
-**
-*/
-//     for (int i=0,j=0; i<num_pixels; i+=2,j+=3){
-//         uint16_t p1 = packed[j] | ((packed[j+1] & 0x0F) << 8); 
-//         uint16_t p2 = ((packed[j+1] >> 4) & 0x0F | packed[j+2] << 4);
-//         unpacked[i] = p1;
-//         unpacked[i+1] = p2;
-//     }
-// }
-
-/* function to take 16 bit pixel values which are filled with 12 bits and 
-** mask out the last 4 bits to ensure they are zero and not random garbage
-**
-*/
-void unpack_mono12(uint16_t * packed, uint16_t * unpacked, int num_pixels){
-
-    for (int i =0; i< num_pixels; i++) {
-        unpacked[i] = packed[i] & 0x0FFF; //this masks the last four pixels
+/**
+ * @brief function to take 16 bit pixel values which are filled with 12 bits and 
+ * mask out the last 4 bits to ensure they are zero and not random garbage
+ * @param packed pointer to array of pixel values from camera transfer
+ * @param unpacked pointer to destination array for use by rest of code
+ * @param num_pixels total number of pixels in image
+ */
+void unpack_mono12(uint16_t* packed, uint16_t* unpacked, int num_pixels)
+{
+    for (int i = 0; i < num_pixels; i++) {
+        unpacked[i] = packed[i] & 0x0FFF; // this masks the last four pixels
     }
-
 }
+
 
 /* Helper function to print camera errors.
 ** Input: None.
@@ -185,13 +151,14 @@ const char * printCameraError() {
     return last_error_str;
 }
 
+
 /* Function to initialize the camera and its various parameters.
 ** Input: None.
 ** Output: A flag indicating successful camera initialization or not.
 */
 int initCamera() {
     double min_exposure, max_exposure;
-    unsigned int enable = 1;   
+    unsigned int enable = 1;
 
     // load the camera parameters
     if (loadCamera() < 0) {
@@ -248,7 +215,7 @@ int initCamera() {
     }
 
     // set how images are saved
-	setSaveImage();
+    setSaveImage();
 
     return 1;
 }
@@ -453,29 +420,30 @@ int loadCamera() {
     double fps;
 
     // initialize camera
-	if (is_InitCamera(&camera_handle, NULL) != IS_SUCCESS) {
-        printf("Error initializing camera in loadCamera().\n");
+    if (is_InitCamera(&camera_handle, NULL) != IS_SUCCESS) {
+        cam_error = printCameraError();
+        printf("Error initializing camera in loadCamera(): %s.\n", cam_error);
         return -1;
-	}
+    }
   
     // get sensor info
-	if (is_GetSensorInfo(camera_handle, &sensorInfo) != IS_SUCCESS) {
+    if (is_GetSensorInfo(camera_handle, &sensorInfo) != IS_SUCCESS) {
         cam_error = printCameraError();
         printf("Error getting camera sensor information: %s.\n", cam_error);
         return -1;
-	} 
+    } 
 
     // set various other camera parameters
-	if (setCameraParams() < 0) {
+    if (setCameraParams() < 0) {
         return -1;
     }
 
     // set display mode and then get it to verify
-	if (is_SetColorMode(camera_handle, IS_CM_MONO12) != IS_SUCCESS) {
+    if (is_SetColorMode(camera_handle, IS_CM_MONO12) != IS_SUCCESS) {
         cam_error = printCameraError();
         printf("Error setting color mode: %s.\n", cam_error);
         return -1;
-	}
+    }
     curr_color_mode = is_SetColorMode(camera_handle, IS_GET_COLOR_MODE);
     if (verbose) {
         printf("|\tCamera model: %s\t\t\t  |\n", sensorInfo.strSensorName);
@@ -487,44 +455,57 @@ int loadCamera() {
         printf("|\tPixel size (micrometers): %.2f\t\t\t  |\n", 
               ((double) sensorInfo.wPixelSize)/100.0);
     }
- 	
+     
     // allocate camera memory
-	color_depth = 16; 
-	if (is_AllocImageMem(camera_handle, sensorInfo.nMaxWidth, 
+    color_depth = 16; 
+    if (is_AllocImageMem(camera_handle, sensorInfo.nMaxWidth, 
                          sensorInfo.nMaxHeight, color_depth, (char **) &mem_starting_ptr, 
                          &mem_id) != IS_SUCCESS) {
-		cam_error = printCameraError();
+        cam_error = printCameraError();
         printf("Error allocating image memory: %s.\n", cam_error);
         return -1;
-	}
+    }
 
     // set memory for image (make memory pointer active)
-	if (is_SetImageMem(camera_handle, (char *)mem_starting_ptr, mem_id) != IS_SUCCESS) {
+    if (is_SetImageMem(camera_handle, (char *)mem_starting_ptr, mem_id) != IS_SUCCESS) {
         cam_error = printCameraError();
         printf("Error setting image memory: %s.\n", cam_error);
         return -1;
     }
 
     // get image memory
-	if (is_GetImageMem(camera_handle, &active_mem_loc) != IS_SUCCESS) {
+    if (is_GetImageMem(camera_handle, &active_mem_loc) != IS_SUCCESS) {
         cam_error = printCameraError();
         printf("Error getting image memory: %s.\n", cam_error);
         return -1;
     }
-    UINT nRange[3]={0};
-    INT nRet = is_PixelClock(camera_handle,IS_PIXELCLOCK_CMD_GET_RANGE, (void*)nRange,sizeof(nRange));
-    if (nRet == IS_SUCCESS)
-    {
-        UINT nMin = nRange[0];
-        UINT nMax = nRange[1];
-        UINT nInc = nRange[2];
-        printf("clock params = %d, %d, %d \n", nMin, nMax, nInc);
+
+    // set frame rate
+    fps = 10;
+    if (is_SetFrameRate(camera_handle, IS_GET_FRAMERATE, (void *) &fps) 
+        != IS_SUCCESS) {
+        cam_error = printCameraError();
+        printf("Error setting frame rate: %s.\n", cam_error);
+        return -1;
     }
 
-    
+    pixelclock = 25;
+    // Check pixelclock allowed values, in case settings changes have caused it
+    // to differ
+    unsigned int nRange[3] = {0};
+    int nRet = is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_GET_RANGE, (void*)nRange, sizeof(nRange));
+    if (nRet == IS_SUCCESS)
+    {
+        unsigned int nMin = nRange[0];
+        unsigned int nMax = nRange[1];
+        unsigned int nInc = nRange[2];
+        printf("|\tPixelclock min, max, inc: %d, %d, %d  \t\t |\n", nMin, nMax, nInc);
+        
+        pixelclock = nMin;
+    }
+
     // how clear images can be is affected by pixelclock and fps 
-    pixelclock = 99;
-	if (is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_SET, 
+    if (is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_SET, 
                       (void *) &pixelclock, sizeof(pixelclock)) != IS_SUCCESS) {
         cam_error = printCameraError();
         printf("Error setting pixel clock: %s.\n", cam_error);
@@ -537,23 +518,14 @@ int loadCamera() {
         printf("|\tPixel clock: %i\t\t\t\t\t  |\n", curr_pc);
     }
 
-    // set frame rate
-	fps = 10;
-	if (is_SetFrameRate(camera_handle, IS_GET_FRAMERATE, (void *) &fps) 
-        != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting frame rate: %s.\n", cam_error);
-        return -1;
-    }
-
     // set trigger to software mode (call is_FreezeVideo to take single picture 
     // in single frame mode)
-	if (is_SetExternalTrigger(camera_handle, IS_SET_TRIGGER_SOFTWARE) 
+    if (is_SetExternalTrigger(camera_handle, IS_SET_TRIGGER_SOFTWARE) 
         != IS_SUCCESS) {
         cam_error = printCameraError();
         printf("Error setting external trigger mode: %s.\n", cam_error);
         return -1;
-	}
+    }
     // get the current trigger setting
     curr_ext_trig = is_SetExternalTrigger(camera_handle, IS_GET_EXTERNALTRIGGER);
     if (verbose) {
@@ -568,11 +540,11 @@ int loadCamera() {
 ** Output: None (void).
 */
 void setSaveImage() {
-    ImageFileParams.pwchFileName = L"save1.bmp";
+    ImageFileParams.pwchFileName = L"save1.png"; // BMP not supported for >8bit
     ImageFileParams.pnImageID = NULL;
     ImageFileParams.ppcImageMem = NULL;
-    ImageFileParams.nQuality = 80;
-    ImageFileParams.nFileType = IS_IMG_BMP;
+    ImageFileParams.nQuality = 100;
+    ImageFileParams.nFileType = IS_IMG_PNG;
 }
 
 /* Function to mask hot pixels accordinging to static and dynamic maps.
@@ -655,6 +627,7 @@ void makeMask(uint16_t * ib, int i0, int j0, int i1, int j1, int x0, int y0,
     
     int cutoff = all_blob_params.spike_limit*100.0;
 
+    // Zero out borders of mask array
     for (i = i0; i < i1; i++) {
         mask[i + CAMERA_WIDTH*j0] = mask[i + (j1-1)*CAMERA_WIDTH] = 0;
     }
@@ -734,7 +707,7 @@ void makeMask(uint16_t * ib, int i0, int j0, int i1, int j1, int x0, int y0,
 /**
  * @brief Function that will do a simple boxcar smoothing of an image.
  * 
- * @param ib "input buffer" the input image with 8 bit depth
+ * @param ib "input buffer" the input image with 12 bit depth, stored in 16bit ints
  * @param i0 starting column for filtering
  * @param j0 starting row for filtering
  * @param i1 ending column for filtering
@@ -742,7 +715,7 @@ void makeMask(uint16_t * ib, int i0, int j0, int i1, int j1, int x0, int y0,
  * @param r_f boxcar filter radius
  * @param filtered_image output image
  */
-void boxcarFilterImage(char * ib, int i0, int j0, int i1, int j1, int r_f, 
+void boxcarFilterImage(uint16_t * ib, int i0, int j0, int i1, int j1, int r_f, 
                        double * filtered_image) {
     static int first_time = 1;
     static char * nc = NULL;
@@ -885,7 +858,7 @@ int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x,
     // lowpass filter the image - reduce noise.
     boxcarFilterImage(input_buffer, i0, j0, i1, j1, all_blob_params.r_smooth, 
                       ic);
-        // test code to grab real filtered images if we want.
+    // test code to grab real filtered images if we want.
     /* for (int j = 0; j < CAMERA_HEIGHT; j++)
     {
         for (int i = 0; i < CAMERA_WIDTH; i++)
@@ -1010,8 +983,8 @@ int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x,
                      (ic0 >  ic[i-1 + (j+1)*w]) &&
                      (ic0 >  ic[i   + (j+1)*w]) &&
                      (ic0 >  ic[i+1 + (j+1)*w])) ||
-                     (ic0 > 254)) {
-                      
+                     (ic0 > (CAMERA_MAX_PIXVAL - 1))) {
+
                     int unique = 1;
 
                     // realloc array if necessary (when the camera looks at a 
@@ -1156,9 +1129,9 @@ int makeTable(char * filename, double * star_mags, double * star_x,
     FILE * fp;
 
     if ((fp = fopen(filename, "w")) == NULL) {
-    	fprintf(stderr, "Could not open blob-writing table file: %s.\n", 
+        fprintf(stderr, "Could not open blob-writing table file: %s.\n", 
                 strerror(errno));
-    	return -1;
+        return -1;
     }
 
     for (int i = 0; i < blob_count; i++) {
@@ -1373,10 +1346,10 @@ int doCameraAndAstrometry() {
         }
 
         if ((af_file = fopen(af_filename, "w")) == NULL) {
-    	    fprintf(stderr, "Could not open auto-focusing file: %s.\n", 
+            fprintf(stderr, "Could not open auto-focusing file: %s.\n", 
                     strerror(errno));
-    	    return -1;
-    	}
+            return -1;
+        }
 
         all_camera_params.begin_auto_focus = 0;
 
@@ -1434,40 +1407,39 @@ int doCameraAndAstrometry() {
     }
 
 
-    /*
-    ** unpack the image
-    */
+    // unpack the image from the sensor into memory
     int total_pixels = CAMERA_WIDTH * CAMERA_HEIGHT;
     static uint16_t * unpacked_image = NULL;
-    static int unpacked_alloc_size=0;
-    // unpack_mono12(memory,unpacked_image,total_pixels);
-    if (unpacked_image == NULL || unpacked_alloc_size < total_pixels){
+    static int unpacked_alloc_size = 0;
+
+    if (unpacked_image == NULL || unpacked_alloc_size < total_pixels) {
         if (unpacked_image != NULL){
             free(unpacked_image);
         }
 
         unpacked_alloc_size = total_pixels;
         unpacked_image = malloc(total_pixels * sizeof(uint16_t));
-        if (unpacked_image == NULL){
+        if (unpacked_image == NULL) {
             fprintf(stderr, "Failed to allocate unpacked image buffer\n");
-            // return -1;
+            return -1;
         }
     }
 
     unpack_mono12(memory,unpacked_image,total_pixels);
 
     // testing pictures that have already been taken
-    if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
-                         (char **) &memory) == 1) {
-        if (verbose) {
-            printf("Successfully loaded test picture.\n");
-        }
-    } else {
-        fprintf(stderr, "Error loading test picture: %s.\n", strerror(errno));
-        // can't solve without a picture to solve on!
-        usleep(1000000);
-        return -1;
-    }
+    // if you uncomment this for testing, you may need to change the path.
+    // if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
+    //                      (char **) &memory) == 1) {
+    //     if (verbose) {
+    //         printf("Successfully loaded test picture.\n");
+    //     }
+    // } else {
+    //     fprintf(stderr, "Error loading test picture: %s.\n", strerror(errno));
+    //     // can't solve without a picture to solve on!
+    //     usleep(1000000);
+    //     return -1;
+    // }
 
     // find the blobs in the image
     blob_count = findBlobs(unpacked_image, CAMERA_WIDTH, CAMERA_HEIGHT, &star_x, 
@@ -1533,10 +1505,10 @@ int doCameraAndAstrometry() {
     }
 
     // make kst display the filtered image 
-    memcpy(output_buffer, unpacked_image, CAMERA_WIDTH*CAMERA_HEIGHT*sizeof(uint16_t)); 
+    memcpy(output_buffer, unpacked_image, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
 
-    // pointer for transmitting to user should point to where image is in memory
-    camera_raw = output_buffer;
+    // pass off the image bytes for sending to clients
+    memcpy(camera_raw, output_buffer, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
 
     // get current time right after exposure
     if (clock_gettime(CLOCK_REALTIME, &camera_tp_beginning) == -1) {
@@ -1569,7 +1541,7 @@ int doCameraAndAstrometry() {
 
         strftime(time_str, sizeof(time_str), "%Y-%m-%d_%H:%M:%S", tm_info);
         sprintf(date, "/home/starcam/Desktop/TIMSC/BMPs/auto_focus_at_%d_"
-                      "brightest_blob_%d_at_x%d_y%d_%s.bmp", 
+                      "brightest_blob_%d_at_x%d_y%d_%s.png", 
                 all_camera_params.focus_position, brightest_blob, 
                 brightest_blob_x, brightest_blob_y, time_str);
         if (verbose) {
@@ -1696,7 +1668,7 @@ int doCameraAndAstrometry() {
         }
 
         strftime(date, sizeof(date), "/home/starcam/Desktop/TIMSC/BMPs/"
-                                     "saved_image_%Y-%m-%d_%H:%M:%S.bmp", 
+                                     "saved_image_%Y-%m-%d_%H:%M:%S.png", 
                                      tm_info);
         swprintf(filename, 200, L"%s", date);
 
@@ -1730,12 +1702,12 @@ int doCameraAndAstrometry() {
         }
 
         // calculate time it took camera program to run in nanoseconds
-	    start = (double) (camera_tp_beginning.tv_sec*1e9) + 
+        start = (double) (camera_tp_beginning.tv_sec*1e9) + 
                 (double) camera_tp_beginning.tv_nsec;
-	    end = (double) (camera_tp_end.tv_sec*1e9) + 
+        end = (double) (camera_tp_end.tv_sec*1e9) + 
               (double) camera_tp_end.tv_nsec;
         camera_time = end - start;
-	    printf("(*) Camera completed one round in %f msec.\n", 
+        printf("(*) Camera completed one round in %f msec.\n", 
                camera_time*1e-6);
 
         // write this time to the data file
@@ -1751,16 +1723,16 @@ int doCameraAndAstrometry() {
     // save image for future reference
     ImageFileParams.pwchFileName = filename;
     if (is_ImageFile(camera_handle, IS_IMAGE_FILE_CMD_SAVE, 
-                    (void *) &ImageFileParams, sizeof(ImageFileParams)) == -1) {
+                    (void *) &ImageFileParams, sizeof(ImageFileParams)) != IS_SUCCESS) {
         const char * last_error_str = printCameraError();
         printf("Failed to save image: %s\n", last_error_str);
     }
 
     wprintf(L"Saving to \"%s\"\n", filename);
     // unlink whatever the latest saved image was linked to before
-    unlink("/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.bmp");
+    unlink("/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
     // sym link current date to latest image for live Kst updates
-    symlink(date, "/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.bmp");
+    symlink(date, "/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
 
     // make a table of blobs for Kst
     if (makeTable("makeTable.txt", star_mags, star_x, star_y, blob_count) != 1) {
