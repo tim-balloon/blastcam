@@ -290,10 +290,6 @@ int initLensAdapter(char * path) {
     options.c_cflag &= ~CRTSCTS;
 
     options.c_iflag |= ICRNL;
-    // sets a read timeout of 2 seconds so it doesn't block forever
-    options.c_lflag &= ~ICANON;
-    options.c_cc[VTIME] = 2;
-    options.c_cc[VMIN] = 0;
 
     // apply changes
     if (tcsetattr(file_descriptor, TCSANOW, &options) < 0) {
