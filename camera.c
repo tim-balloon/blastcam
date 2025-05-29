@@ -542,6 +542,7 @@ int getNumberOfCameras(int* pNumCams) {
         *pNumCams = 0;
         return -1;
     }
+    return 0;
 }
 
 
