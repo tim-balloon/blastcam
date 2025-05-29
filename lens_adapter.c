@@ -261,7 +261,7 @@ int initLensAdapter(char * path) {
     options.c_lflag = 0;
     // no re-mapping, no delays
     options.c_oflag = 0;
-    // The desired behavior is to listen for up to 99 chars (shorter than the
+    // The desired behavior is to listen for up to 99 chars (longer than the
     // length of a Birger response), or until the inter-character arrival time
     // exceeds 0.1 sec after receipt of first char. This effectively caps the
     // time it takes to return control flow to the rest of the program after a
@@ -374,8 +374,8 @@ int initLensAdapter(char * path) {
 int beginAutoFocus() {
     char focus_str_cmd[10];
 
-    // HACK: always start AF runs by checking current focuser pos, to get right
-    // delta to begin AF run
+    // Always start AF runs by checking current focuser pos, to get right
+    // delta to begin AF run.
     if (runCommand("fp\r", file_descriptor, birger_output) == -1) {
         printf("Failed to print the new focus position.\n");
         return -1;
