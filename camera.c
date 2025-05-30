@@ -36,7 +36,7 @@ int send_data = 0;
 int taking_image = 0;
 int default_focus_photos = 3;
 int buffer_num, shutting_down, mem_id;
-uint16_t * memory, * waiting_mem, * mem_starting_ptr; //we want raw bytes
+uint16_t * memory, * mem_starting_ptr; //we want raw bytes
 unsigned char * mask;
 
 uint16_t unpacked_image[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
@@ -44,7 +44,7 @@ uint16_t unpacked_image[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
 const char * cam_error;
 // 'curr' = current, 'pc' = pixel clock, 'fps' = frames per sec, 
 // 'ag' = auto gain, 'bl' = black level
-double curr_exposure, actual_fps, curr_ag, curr_shutter, auto_fr;
+double curr_exposure, curr_ag, curr_shutter, auto_fr;
 int curr_pc, curr_color_mode, curr_ext_trig, curr_trig_delay, curr_master_gain;
 int curr_red_gain, curr_green_gain, curr_blue_gain, curr_gamma, curr_gain_boost;
 unsigned int curr_timeout;
@@ -534,6 +534,114 @@ int loadCamera() {
 
     return 1;
 }
+
+
+int getNumberOfCameras(int* pNumCams) {
+    if (is_GetNumberOfCameras(pNumCams) != IS_SUCCESS) {
+        printf("Cannot get # of cameras connected to computer.\n");
+        *pNumCams = 0;
+        return -1;
+    }
+    return 0;
+}
+
+
+/**
+ * @brief Attempt to set exposure time to the user-commanded time in the
+ * all_camera_params.exposure_time struct field.
+ * @details Pass in the struct field by value to avoid is_Exposure updating it
+ * out from under the user. We do report the actual set value though.
+ * 
+ * @param newExposureTime requested exposure time (seconds)
+ * @return int -1 for failure, 0 otherwise
+ */
+int updateExposure(double newExposureTime) {
+    int ret = 0;
+    // run uEye function to update camera exposure
+    // After the call, the actual set exposure time is stored in newExposureTime
+    if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_SET_EXPOSURE, 
+                    (void *) &newExposureTime, 
+                    sizeof(double)) != IS_SUCCESS) {
+        printf("Adjusting exposure to user command unsuccessful.\n");
+        ret = -1;
+    }
+    printf("Exposure is now %f msec.\n", newExposureTime);
+    return ret;
+}
+
+
+// save image for future reference
+int saveImageToDisk(wchar_t* filename) {
+    int ret = 0;
+    ImageFileParams.pwchFileName = filename;
+    if (is_ImageFile(camera_handle, IS_IMAGE_FILE_CMD_SAVE, 
+                    (void *) &ImageFileParams, sizeof(ImageFileParams)) != IS_SUCCESS) {
+        const char * last_error_str = printCameraError();
+        printf("Failed to save image: %s\n", last_error_str);
+        ret = -1;
+    }
+    return ret;
+}
+
+
+double getFps(void) {
+    double actual_fps = 0;
+    is_SetFrameRate(camera_handle, IS_GET_FRAMERATE, (void *) &actual_fps);
+    return actual_fps;
+}
+
+/**
+ * @brief Encapsulates the call to trigger an image capture.
+ * 
+ * @return int status: -1 if failed, 0 otherwise
+ */
+int imageCapture(void) {
+    int ret = 0;
+    if (verbose) {
+        printf("\n> Taking a new image...\n\n");
+    }
+    if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
+        const char * last_error_str = printCameraError();
+        printf("Failed to capture new image: %s\n", last_error_str);
+        ret = -1;
+    }
+    return ret;
+}
+
+
+/**
+ * @brief Transfer the captured image from the allocated camera shared memory
+ * to a 16-bit local buffer. This function encapsulates any bit unpacking
+ * required to translate from the image capture format to the working format.
+ * @details For real-time applications, it's recommended to allocate the
+ * required memory for shuffling around the image data one time at
+ * initialization, rather than dynamically, which could reduce determinism or
+ * fail during operation.
+ * 
+ * @param pUnpackedImage pointer to destination memory for the unpacked image.
+ * IT IS THE CALLER'S RESPONSIBILITY TO PROVIDE ADEQUATE MEMORY ALLOCATION FOR
+ * THE UNPACKED IMAGE.
+ * @return int status: -1 for failure, 0 otherwise.
+ */
+int imageTransfer(uint16_t* pUnpackedImage) {
+    int ret = 0;
+    // get the image from memory: abuse GetActSeqBuf to give us the pointer to
+    // ppcMemLast, a pointer to the pointer to the image memory that was last
+    // used for capturing an image.
+    char* pDummyMem; // Required for call, unused
+    uint16_t* pLocalMem;
+    if (is_GetActSeqBuf(camera_handle, &buffer_num, (char **) &pDummyMem, 
+        (char **) &pLocalMem) != IS_SUCCESS) {
+        cam_error = printCameraError();
+        printf("Error retrieving the active image memory: %s.\n", cam_error);
+        return -1;
+    }
+
+    unpack_mono12(pLocalMem, pUnpackedImage, CAMERA_WIDTH * CAMERA_HEIGHT);
+
+    return 0;
+}
+
 
 /* Function to establish the parameters for saving images taken by the camera.
 ** Input: None.
@@ -1226,9 +1334,6 @@ int doCameraAndAstrometry() {
             return -1;
         }
 
-        // get frame rate again
-        is_SetFrameRate(camera_handle, IS_GET_FRAMERATE, (void *) &actual_fps);
-
         // write observing information to data file
         strftime(buff, sizeof(buff), "%B %d Observing Session - beginning "
                                      "%H:%M:%S GMT", tm_info);
@@ -1238,7 +1343,7 @@ int doCameraAndAstrometry() {
         fprintf(fptr, "# ----------------------------------------------------\n");
         fprintf(fptr, "# Exposure: %f milliseconds\n", curr_exposure);
         fprintf(fptr, "# Pixel clock: %i\n", curr_pc);
-        fprintf(fptr, "# Frame rate achieved (desired is 10): %f\n", actual_fps);
+        fprintf(fptr, "# Frame rate achieved (desired is 10): %f\n", getFps());
         fprintf(fptr, "# Trigger delay (microseconds): %i\n", curr_trig_delay);
         fprintf(fptr, "# Current trigger mode setting: %i\n", curr_ext_trig);
         fprintf(fptr, "# Current trigger timeout: %i\n", curr_timeout);
@@ -1366,8 +1471,6 @@ int doCameraAndAstrometry() {
                 "/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
     }
 
-    // take an image
-
     taking_image = 1;
     // Ian Lowe, 1/9/24, adding new logic to look for a trigger from a FC or sleep instead
     if (all_trigger_params.trigger_mode == 1) {
@@ -1376,22 +1479,15 @@ int doCameraAndAstrometry() {
             usleep(all_trigger_params.trigger_timeout_us); // default sleep 100µs while we wait for triggers
         }
         all_trigger_params.trigger = 0; // set the trigger to 0 now that we are going to take an image
-        if (verbose) {
-            printf("\n> Taking a new image...\n\n");
+        if (imageCapture() < 0) {
+            fprintf(stderr, "Could not complete image capture: %s.\n", 
+                strerror(errno));
         }
-        if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
-            const char * last_error_str = printCameraError();
-            printf("Failed to capture new image: %s\n", last_error_str);
+    } else {
+        if (imageCapture() < 0) {
+            fprintf(stderr, "Could not complete image capture: %s.\n", 
+                strerror(errno));
         }
-    }
-    else {
-        if (verbose) {
-            printf("\n> Taking a new image...\n\n");
-        }
-        if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
-            const char * last_error_str = printCameraError();
-            printf("Failed to capture new image: %s\n", last_error_str);
-        } 
     }
     taking_image = 0;
 
@@ -1399,33 +1495,11 @@ int doCameraAndAstrometry() {
     photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
     all_astro_params.photo_time = photo_time;
 
-    // get the image from memory
-    if (is_GetActSeqBuf(camera_handle, &buffer_num, (char **) &waiting_mem, (char **) &memory) 
-        != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error retrieving the active image memory: %s.\n", cam_error);
+    if (imageTransfer(unpacked_image) < 0) {
+        fprintf(stderr, "Could not complete image transfer: %s.\n", 
+            strerror(errno));
+        return -1;
     }
-
-
-    // unpack the image from the sensor into memory
-    int total_pixels = CAMERA_WIDTH * CAMERA_HEIGHT;
-    static uint16_t * unpacked_image = NULL;
-    static int unpacked_alloc_size = 0;
-
-    if (unpacked_image == NULL || unpacked_alloc_size < total_pixels) {
-        if (unpacked_image != NULL){
-            free(unpacked_image);
-        }
-
-        unpacked_alloc_size = total_pixels;
-        unpacked_image = malloc(total_pixels * sizeof(uint16_t));
-        if (unpacked_image == NULL) {
-            fprintf(stderr, "Failed to allocate unpacked image buffer\n");
-            return -1;
-        }
-    }
-
-    unpack_mono12(memory,unpacked_image,total_pixels);
 
     // testing pictures that have already been taken
     // if you uncomment this for testing, you may need to change the path.
@@ -1720,13 +1794,7 @@ int doCameraAndAstrometry() {
         fptr = NULL;
     }
 
-    // save image for future reference
-    ImageFileParams.pwchFileName = filename;
-    if (is_ImageFile(camera_handle, IS_IMAGE_FILE_CMD_SAVE, 
-                    (void *) &ImageFileParams, sizeof(ImageFileParams)) != IS_SUCCESS) {
-        const char * last_error_str = printCameraError();
-        printf("Failed to save image: %s\n", last_error_str);
-    }
+    saveImageToDisk(filename);
 
     wprintf(L"Saving to \"%s\"\n", filename);
     // unlink whatever the latest saved image was linked to before

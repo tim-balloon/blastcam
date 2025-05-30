@@ -556,7 +556,6 @@ int calculateOptimalFocus(int num_focus, char * auto_focus_file) {
 int adjustCameraHardware() {
     char focus_str_cmd[15]; 
     char aper_str_cmd[15]; 
-    double current_exposure;
     int focus_shift;
     int ret = 1;
 
@@ -644,24 +643,7 @@ int adjustCameraHardware() {
         // change boolean to 0 so exposure isn't adjusted again until user sends
         //  another command
         all_camera_params.change_exposure_bool = 0;
-
-        // run uEye function to update camera exposure
-        if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_SET_EXPOSURE, 
-                        (void *) &all_camera_params.exposure_time, 
-                        sizeof(double)) != IS_SUCCESS) {
-            printf("Adjusting exposure to user command unsuccessful.\n");
-            ret = -1;
-        }
-
-        // check with current_exposure that exposure has been adjusted to 
-        // desired value
-        if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_GET_EXPOSURE, 
-                        &current_exposure, sizeof(double)) != IS_SUCCESS) {
-            printf("Could not check current exposure value.\n");
-            ret = -1;
-        } else {
-            printf("Exposure is now %f msec.\n", current_exposure);
-        }
+        ret = updateExposure(all_camera_params.exposure_time);
     }
 
     return ret;
