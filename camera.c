@@ -510,11 +510,7 @@ int initCamera(void) {
     // // set how images are saved
     // setSaveImage();
 
-    // In iDS peak, we can call peak_Frame_Save() on a frame handle
-    // to save an image with default compression/quality settings. For a .png,
-    // this is compression ratio 25.
-    // This suffices for now, because eventually we will save and compress FITS
-    // files and this will be deprecated.
+    // Image saving handled in imageTransfer()
 
     if (verbose) {
         printf("initCamera: starting image acquisition...\n");
@@ -1627,12 +1623,6 @@ int imageTransfer(uint16_t* pUnpackedImage, char* filename) {
     // TODO(evanmayer): if we want more image data, like the timestamp in camera
     // time (since camera init), we could query here.
 
-    // NOTE(evanmayer): for now, save to disk in here. Later, the unpacked buffer
-    // will be written to disk as FITS.
-    if (saveImageToDisk(filename, hFrame) < 0) {
-        fprintf(stderr, "WARNING: Failed to save frame to disk.\n");
-    }
-
     // For the Mono12 unpacked format, each pixel occupies two bytes, and we can
     // iterate after casting the memory pointer
     if (verbose) {
@@ -1644,6 +1634,12 @@ int imageTransfer(uint16_t* pUnpackedImage, char* filename) {
     // frame buffer memory
     unpack_mono12((uint16_t *)buffer.memoryAddress, pUnpackedImage,
         CAMERA_WIDTH * CAMERA_HEIGHT);
+
+    // NOTE(evanmayer): for now, save to disk in here. Later, the unpacked buffer
+    // will be written to disk as FITS.
+    if (saveImageToDisk(filename, hFrame) < 0) {
+        fprintf(stderr, "WARNING: Failed to save frame to disk.\n");
+    }
 
     status = peak_Frame_Release(hCam, hFrame);
     if(!checkForSuccess(status)) {

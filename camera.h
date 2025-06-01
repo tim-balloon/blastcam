@@ -14,18 +14,20 @@ extern HIDS camera_handle;
 #ifndef IDS_PEAK
 #define CAMERA_WIDTH   1936 // [px]
 #define CAMERA_HEIGHT  1216 // [px]
+// pixel scale search range bounds -> 6.0 to 6.5 for SO, 6.0 to 7.0 for BLAST
 #define MIN_PS         6.0  // [arcsec/px]
 #define MAX_PS         7.0  // [arcsec/px]
 #else
 // TIMSC is IMX542
-#define CAMERA_WIDTH   5328 // [px]
-#define CAMERA_HEIGHT  3040 // [px]
+// Datasheet says array is 5328 x 3040, but this includes overscan. The active
+// area is 8px smaller each side.
+#define CAMERA_WIDTH   5320 // [px]
+#define CAMERA_HEIGHT  3032 // [px]
 #define MIN_PS         14.0  // [arcsec/px]
 #define MAX_PS         15.0  // [arcsec/px]
 #endif
 #define CAMERA_MARGIN  0		 // [px]
 #define CAMERA_MAX_PIXVAL 4095 //  2**12
-// pixel scale search range bounds -> 6.0 to 6.5 for SO, 6.0 to 7.0 for BLAST
 #define STATIC_HP_MASK "/home/starcam/Desktop/TIMSC/static_hp_mask.txt"
 #define dut1           -0.23
 
