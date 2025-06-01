@@ -61,9 +61,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <termios.h>
-#include <ueye.h>
 #include <math.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "lens_adapter.h"
 #include "camera.h"
@@ -95,7 +95,6 @@ char * birger_output, * buffer;
 int file_descriptor, default_focus;
 // global variables for solution to quadratic regression for auto-focusing
 double a, b, c;
-IMAGE_FILE_PARAMS ImageFileParams;
 
 /* Helper function to print a 1D array.
 ** Input: The array to be printed.
@@ -643,7 +642,7 @@ int adjustCameraHardware() {
         // change boolean to 0 so exposure isn't adjusted again until user sends
         //  another command
         all_camera_params.change_exposure_bool = 0;
-        ret = updateExposure(all_camera_params.exposure_time);
+        ret = setExposureTime(all_camera_params.exposure_time);
     }
 
     return ret;

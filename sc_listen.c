@@ -8,11 +8,9 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <unistd.h>
 #include <pthread.h>
 #include <signal.h>
 #include <errno.h>
-#include <ueye.h>
 
 #include "sc_listen.h"
 #include "commands.h"
@@ -25,7 +23,8 @@ extern int cancelling_auto_focus;
 extern int shutting_down;
 extern int taking_image;
 
-
+struct socket_errors sock_status = {};
+struct comms_data thread_comms = {};
 
 
 void set_status(char * ip, char * listen, int value) {

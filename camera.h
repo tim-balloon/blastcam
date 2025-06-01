@@ -2,18 +2,33 @@
 #define CAMERA_H
 #include "astrometry.h"
 
+#ifdef IDS_PEAK
+#include <ids_peak_comfort_c/ids_peak_comfort_c.h>
+extern peak_camera_handle hCam;
+#else
+#include <ueye.h>
+extern HIDS camera_handle;
+#endif
+
 // SO Star Camera is 1936 width by 1216 height; BLAST is 1392 by 1040
-#define CAMERA_WIDTH   1936 	 // [px]
-#define CAMERA_HEIGHT  1216	     // [px]
+#ifndef IDS_PEAK
+#define CAMERA_WIDTH   1936 // [px]
+#define CAMERA_HEIGHT  1216 // [px]
+#define MIN_PS         6.0  // [arcsec/px]
+#define MAX_PS         7.0  // [arcsec/px]
+#else
+// TIMSC is IMX542
+#define CAMERA_WIDTH   5328 // [px]
+#define CAMERA_HEIGHT  3040 // [px]
+#define MIN_PS         14.0  // [arcsec/px]
+#define MAX_PS         15.0  // [arcsec/px]
+#endif
 #define CAMERA_MARGIN  0		 // [px]
 #define CAMERA_MAX_PIXVAL 4095 //  2**12
 // pixel scale search range bounds -> 6.0 to 6.5 for SO, 6.0 to 7.0 for BLAST
-#define MIN_PS         6.0       // [arcsec/px]
-#define MAX_PS         7.0		 // [arcsec/px]
 #define STATIC_HP_MASK "/home/starcam/Desktop/TIMSC/static_hp_mask.txt"
 #define dut1           -0.23
 
-extern HIDS camera_handle;
 extern int shutting_down;
 extern int send_data;
 extern int taking_image;
@@ -54,11 +69,16 @@ void setSaveImage();
 int loadCamera();
 int initCamera();
 int getNumberOfCameras(int* pNumCams);
-int updateExposure(double newExposureTime);
+int setExposureTime(double exposureTimeMs);
 double getFps(void);
 int imageCapture(void);
+#ifndef IDS_PEAK
 int imageTransfer(uint16_t* pUnpackedImage);
-int saveImageToDisk(wchar_t* filename);
+int saveImageToDisk(char* filename);
+#else
+int imageTransfer(uint16_t* pUnpackedImage, char* filename);
+int saveImageToDisk(char* filename, peak_frame_handle hFrame);
+#endif
 int doCameraAndAstrometry();
 void clean();
 void closeCamera();
