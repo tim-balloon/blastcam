@@ -830,15 +830,15 @@ int setExposureTime(double exposureTimeMs)
 {
     int ret = 0;
     // run uEye function to update camera exposure
-    // After the call, the actual set exposure time is stored in newExposureTime
+    // After the call, the actual set exposure time is stored in exposureTimeMs
     if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_SET_EXPOSURE, 
-                    (void *) &newExposureTime, 
+                    (void *) &exposureTimeMs, 
                     sizeof(double)) != IS_SUCCESS) {
         printf("Adjusting exposure to user command unsuccessful.\n");
         ret = -1;
     }
     if (verbose) {
-        printf("Exposure is now %f msec.\n", newExposureTime);
+        printf("Exposure is now %f msec.\n", exposureTimeMs);
     }
     return ret;
 }
@@ -2076,7 +2076,7 @@ int getNumberOfCameras(int* pNumCams) {
 int saveImageToDisk(char* filename)
 {
     int ret = 0;
-    ImageFileParams.pwchFileName = filename;
+    ImageFileParams.pwchFileName = (wchar_t*)filename;
     if (is_ImageFile(camera_handle, IS_IMAGE_FILE_CMD_SAVE, 
                     (void *) &ImageFileParams,
                     sizeof(ImageFileParams)) != IS_SUCCESS) {
