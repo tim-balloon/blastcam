@@ -37,4 +37,4 @@ extern struct mcp_astrometry mcp_astro;
 
 extern struct astrometry all_astro_params;
 
-#endif 
+#endif

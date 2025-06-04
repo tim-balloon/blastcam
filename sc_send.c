@@ -8,11 +8,9 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <unistd.h>
 #include <pthread.h>
 #include <signal.h>
 #include <errno.h>
-#include <ueye.h>
 
 #include "sc_send.h"
 #include "commands.h"

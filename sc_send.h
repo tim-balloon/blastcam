@@ -1,3 +1,6 @@
+#ifndef SC_SEND_H
+#define SC_SEND_H
+
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -23,3 +26,5 @@
 
 void *astrometry_data_thread(void *args);
 void *parameter_data_thread(void *args);
+
+#endif

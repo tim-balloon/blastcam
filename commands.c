@@ -1,19 +1,18 @@
-#include <sys/types.h>  
-#include <sys/socket.h> 
-#include <string.h>     
-#include <stdlib.h>     
-#include <netinet/in.h>     
-#include <stdio.h>          
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <string.h>
+#include <stdlib.h> 
+#include <netinet/in.h>
+#include <stdio.h>
 #include <arpa/inet.h>
 #include <ifaddrs.h> 
-#include <netdb.h>         
-#include <errno.h>      
-#include <time.h>  
-#include <math.h>  
-#include <pthread.h>      
-#include <signal.h>         
-#include <ueye.h>
-#include <getopt.h>           
+#include <netdb.h>
+#include <errno.h>
+#include <time.h>
+#include <math.h>
+#include <pthread.h>
+#include <signal.h>
+#include <getopt.h> 
 
 #include "camera.h"
 #include "astrometry.h"
@@ -59,6 +58,23 @@ struct args {
     char * user_IP;
 };
 #pragma pack(pop)
+
+struct star_cam_capture FC1_in = {};
+struct star_cam_capture FC2_in = {};
+struct star_cam_return FC1_return = {};
+struct star_cam_return FC2_return = {};
+struct mcp_astrometry FC1_astro = {};
+struct mcp_astrometry FC2_astro = {};
+struct socket_data fc1Socket_listen = {};
+struct socket_data fc2Socket_listen = {};
+struct socket_data fc1Socket_trigger = {};
+struct socket_data fc2Socket_trigger = {};
+struct socket_data fc1_return_socket = {};
+struct socket_data fc2_return_socket = {};
+struct socket_data fc1_image_socket = {};
+struct socket_data fc2_image_socket = {};
+struct star_cam_trigger FC1_trigger = {};
+struct star_cam_trigger FC2_trigger = {};
 
 /* Pre-defined struct from getopt.h for additional long options */
 static const struct option long_options[] = {
@@ -378,7 +394,6 @@ void * processClient(void * for_client_thread) {
             break;
         } 
 
-
         if (send(socket, camera_raw, sizeof(camera_raw), 
                  MSG_NOSIGNAL) <= 0) {
             printf("Client dropped the connection.\n");
@@ -635,12 +650,14 @@ int main(int argc, char * argv[]) {
     printf("|     \tSocket Port: %s     \t\t\t\t  |\n", port);
     printf("+---------------------------------------------------------+\n");
 
+    // NOTE(evanmayer): We don't allow the user to choose from multiple cameras,
+    // remove this option.
     // if the arguments exist, check their values are valid
-    camera_handle = atoi(handle);
-    if (camera_handle > 254 || camera_handle < 1) {
-        printf("Invalid camera handle. Choose one in the range 1-254.\n");
-        return 0;
-    }
+    // camera_handle = atoi(handle);
+    // if (camera_handle > 254 || camera_handle < 1) {
+    //     printf("Invalid camera handle. Choose one in the range 1-254.\n");
+    //     return 0;
+    // }
 
     if (atoi(port) > 65535 || atoi(port) < 0) {
         printf("Invalid TCP socket port. Choose one in the range 0-65535.\n");
@@ -718,14 +735,32 @@ int main(int argc, char * argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // initialize the camera with input ID
+    // // initialize the camera with input ID
+    // if (initCamera() < 0) {
+    //     printf("Could not initialize camera due to above error. Could be that "
+    //            "you specified a handle for a camera already in use.\n");
+    //     // if camera was already initialized, close it before exiting
+    //     if (camera_handle > 0) {
+    //         closeCamera();
+    //     }
+    //     close(sockfd);
+    //     exit(EXIT_FAILURE);
+    // }
+
+    // initialize the first available camera
     if (initCamera() < 0) {
         printf("Could not initialize camera due to above error. Could be that "
                "you specified a handle for a camera already in use.\n");
         // if camera was already initialized, close it before exiting
+        #ifndef IDS_PEAK
         if (camera_handle > 0) {
             closeCamera();
         }
+        #else
+        if (hCam > 0) {
+            closeCamera();
+        }
+        #endif
         close(sockfd);
         exit(EXIT_FAILURE);
     }
