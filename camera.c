@@ -2076,12 +2076,14 @@ int getNumberOfCameras(int* pNumCams) {
 int saveImageToDisk(char* filename)
 {
     int ret = 0;
-    ImageFileParams.pwchFileName = (wchar_t*)filename;
+    wchar_t wFilename[200];
+    swprintf(wFilename, 200, L"%s", filename);
+    ImageFileParams.pwchFileName = wFilename;
     if (is_ImageFile(camera_handle, IS_IMAGE_FILE_CMD_SAVE, 
                     (void *) &ImageFileParams,
                     sizeof(ImageFileParams)) != IS_SUCCESS) {
         const char * last_error_str = printCameraError();
-        printf("Failed to save image: %s\n", last_error_str);
+        printf("Failed to save image to file %ls: %s\n", wFilename, last_error_str);
         ret = -1;
     }
     return ret;
