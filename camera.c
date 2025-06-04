@@ -298,8 +298,8 @@ int getTriggerDelay(double* pCurrentTriggerDelayUs)
             }
         }
     } else {
-        fprintf(stderr, "getTriggerDelay: Failed to get actual trigger delay \
-                value, trigger delay not readable at this time.\n");
+        fprintf(stderr, "getTriggerDelay: Failed to get actual trigger delay "
+                "value, trigger delay not readable at this time.\n");
         ret = -1;
     }
     return ret;
@@ -324,20 +324,20 @@ int setMinTriggerDelay(void)
         double doubleInc = 0.0;
         peak_status status = peak_Trigger_Delay_GetRange(hCam, &doubleMin, &doubleMax, &doubleInc);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "setTriggerDelay: Checking trigger delay range \
-                failed. Attempting to set to 0 in absence of min val.\n");
+            fprintf(stderr, "setTriggerDelay: Checking trigger delay range "
+                "failed. Attempting to set to 0 in absence of min val.\n");
             ret = -1;
         }
 
         status = peak_Trigger_Delay_Set(hCam, doubleMin);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "setTriggerDelay: Setting trigger delay to min \
-                failed.\n");
+            fprintf(stderr, "setTriggerDelay: Setting trigger delay to min "
+                "failed.\n");
             ret = -1;
         }
     } else {
-        fprintf(stderr, "setTriggerDelay: Failed to set state of trigger delay,\
-                         not writeable at this time.\n");
+        fprintf(stderr, "setTriggerDelay: Failed to set state of trigger delay,"
+                        " not writeable at this time.\n");
         ret = -1;
     }
 
@@ -365,8 +365,8 @@ int getTriggerDivider(uint32_t* pCurrentTriggerDivider)
         uint32_t actualTriggerDivider = 1;
         peak_status status = peak_Trigger_Divider_Get(hCam, pCurrentTriggerDivider);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "getTriggerDivider: Checking trigger divider value \
-                 failed.\n");
+            fprintf(stderr, "getTriggerDivider: Checking trigger divider value "
+                 "failed.\n");
                 ret = -1;
         } else {
             if (verbose) {
@@ -375,8 +375,8 @@ int getTriggerDivider(uint32_t* pCurrentTriggerDivider)
             }
         }
     } else {
-        fprintf(stderr, "getTriggerDivider: Failed to get actual trigger \
-            divider value, trigger divider not readable at this time.\n");
+        fprintf(stderr, "getTriggerDivider: Failed to get actual trigger "
+            "divider value, trigger divider not readable at this time.\n");
         ret = -1;
     }
     return ret;
@@ -397,13 +397,13 @@ int setMinTriggerDivider(void) {
         // Eschew range checks. 1 will always be a valid divisor.
         peak_status status = peak_Trigger_Divider_Set(hCam, 1);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "setTriggerDivider: Setting trigger divider failed.\
-                \n");
+            fprintf(stderr, "setTriggerDivider: Setting trigger divider failed."
+                "\n");
             ret = -1;
         }
     } else {
-        fprintf(stderr, "setTriggerDivider: Failed to set state of trigger \
-            divider, not writeable at this time.\n");
+        fprintf(stderr, "setTriggerDivider: Failed to set state of trigger "
+            "divider, not writeable at this time.\n");
         ret =-1;
     }
 
@@ -438,8 +438,8 @@ int getMonoAnalogGain(double* pAnalogGain)
             }
         }
     } else {
-        fprintf(stderr, "getMonoAnalogGain: Failed to get actual gain, gain not\
-             readable at this time.\n");
+        fprintf(stderr, "getMonoAnalogGain: Failed to get actual gain, gain not"
+            " readable at this time.\n");
         ret = -1;
     }
     return ret;
@@ -483,8 +483,8 @@ int setMonoAnalogGain(double analogGain)
             ret = -1;
         }
     } else {
-        fprintf(stderr, "Failed to set requested gain value %f. Gain is not\
-            writable at this time.\n", analogGain);
+        fprintf(stderr, "Failed to set requested gain value %f. Gain is not "
+            "writeable at this time.\n", analogGain);
         ret = -1;
     }
 
@@ -511,8 +511,8 @@ int getAutoExposureEnabled(int *pIsEnabled)
         peak_auto_feature_mode mode = PEAK_AUTO_FEATURE_MODE_INVALID;
         peak_status status = peak_AutoBrightness_Exposure_Mode_Get(hCam, &mode);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "getAutoExposureEnabled: Checking autoexposure \
-                    mode failed.\n");
+            fprintf(stderr, "getAutoExposureEnabled: Checking autoexposure "
+                    "mode failed.\n");
                     ret = -1;
         } else {
             if (PEAK_AUTO_FEATURE_MODE_OFF == mode) {
@@ -523,8 +523,8 @@ int getAutoExposureEnabled(int *pIsEnabled)
             }
         }
     } else {
-        fprintf(stderr, "getAutoExposureEnabled: Failed to get autoexposure \
-            state, not readable at this time.\n");
+        fprintf(stderr, "getAutoExposureEnabled: Failed to get autoexposure "
+            "state, not readable at this time.\n");
         ret = -1;
     }
     return ret;
@@ -544,13 +544,13 @@ int disableAutoExposure(void)
         peak_status status = peak_AutoBrightness_Exposure_Mode_Set(hCam,
             PEAK_AUTO_FEATURE_MODE_OFF);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "disableAutoExposure: Setting autoexposure off \
-                failed.\n");
+            fprintf(stderr, "disableAutoExposure: Setting autoexposure off "
+                "failed.\n");
             ret = -1;
         }
     } else {
-        fprintf(stderr, "disableAutoExposure: Failed to set autoexposure, not \
-            writeable at this time.\n");
+        fprintf(stderr, "disableAutoExposure: Failed to set autoexposure, not "
+            "writeable at this time.\n");
         ret = -1;
     }
 
@@ -577,8 +577,8 @@ int getAutoGainEnabled(int* pIsEnabled)
         peak_auto_feature_mode mode = PEAK_AUTO_FEATURE_MODE_INVALID;
         peak_status status = peak_AutoBrightness_Gain_Mode_Get(hCam, &mode);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "getAutoGainEnabled: Checking autogain mode \
-                failed.\n");
+            fprintf(stderr, "getAutoGainEnabled: Checking autogain mode "
+                "failed.\n");
             ret = -1;
         } else {
             if (PEAK_AUTO_FEATURE_MODE_OFF == mode) {
@@ -589,8 +589,8 @@ int getAutoGainEnabled(int* pIsEnabled)
             }
         }
     } else {
-        fprintf(stderr, "getAutoGainEnabled: Failed to get autogain state, \
-            not readable at this time.\n");
+        fprintf(stderr, "getAutoGainEnabled: Failed to get autogain state, "
+            "not readable at this time.\n");
         ret = -1;
     }
     return ret;
@@ -610,13 +610,13 @@ int disableAutoGain(void)
         peak_status status = peak_AutoBrightness_Gain_Mode_Set(hCam,
             PEAK_AUTO_FEATURE_MODE_OFF);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "disableAutoGain: Setting autogain off failed. \
-                Continuing.\n");
+            fprintf(stderr, "disableAutoGain: Setting autogain off failed. "
+                "Continuing.\n");
             ret = -1;
         }
     } else {
-        fprintf(stderr, "disableAutoGain: Failed to set autogain, not \
-            writeable at this time.\n");
+        fprintf(stderr, "disableAutoGain: Failed to set autogain, not "
+            "writeable at this time.\n");
         ret = -1;
     }
 
@@ -660,8 +660,8 @@ int getFps(double* pCurrentFps)
             }
         }
     } else {
-        fprintf(stderr, "getFps: Failed to get actual framerate value, \
-            framerate not readable at this time.\n");
+        fprintf(stderr, "getFps: Failed to get actual framerate value, "
+            "framerate not readable at this time.\n");
         ret = -1;
     }
     return ret;
@@ -687,8 +687,8 @@ int setFps(double frameRateFps)
             ret = -1;
         }
     } else {
-        fprintf(stderr, "setFps: Failed to set framerate value, framerate not \
-            writeable at this time.\n");
+        fprintf(stderr, "setFps: Failed to set framerate value, framerate not "
+            "writeable at this time.\n");
         ret = -1;
     }
     return ret;
@@ -722,8 +722,8 @@ int getPixelClock(double* pCurrentPixelClockMHz)
             }
         }
     } else {
-        fprintf(stderr, "getPixelClock: Failed to get actual pixelclock value,\
-                pixel clock not readable at this time.\n");
+        fprintf(stderr, "getPixelClock: Failed to get actual pixelclock value,"
+            " pixel clock not readable at this time.\n");
         ret = -1;
     }
     return ret;
@@ -754,6 +754,10 @@ int setMinPixelClock(void)
                 // and maxPixelClockMHz with an increment of incPixelClockMHz.
                 pixelClockValueMHz = minPixelClockMHz;
             }
+            if (verbose) {
+                printf("setMinPixelClock: got range %f - %f, step %f MHz.\n",
+                    minPixelClockMHz, maxPixelClockMHz, incPixelClockMHz);
+            }
         } else {
             // The valid values are organized as a list.
             size_t pixelClockCount = 0;
@@ -768,12 +772,17 @@ int setMinPixelClock(void)
                     // A valid value for the pixel clock is one of pixelClockList.
                     pixelClockValueMHz = pixelClockList[0];
                 }
+                if (verbose) {
+                    printf("setMinPixelClock: got list:\n");
+                    for (int i = 0; i < pixelClockCount; i++) {
+                        printf("\t- %f\n", pixelClockList[i]);
+                    }
+                }
             }
         }
     }  else {
-        fprintf(stderr, "setMinPixelClock: Failed to set pixelclock to minimum,\
-                pixel clock not readable at this time.\n");
-        ret = -1;
+        fprintf(stderr, "WARNING: setMinPixelClock: Failed to get pixelclock "
+            "minimum value, pixel clock not readable at this time.\n");
     }
 
     accessStatus = peak_PixelClock_GetAccessStatus(hCam);
@@ -787,10 +796,16 @@ int setMinPixelClock(void)
             // despite not knowing the limits
             ret = 0;
         }
-    }  else {
-        fprintf(stderr, "setMinPixelClock: Failed to set pixelclock to minimum,\
-                pixel clock not writable at this time.\n");
-        ret = -1;
+    } else {
+        // Some cameras may not have user-settable pixel clocks. Don't fail if 
+        // setting fails due to readonly.
+        if (PEAK_ACCESS_READONLY == accessStatus) {
+            ret = 0;
+        } else {
+            fprintf(stderr, "setMinPixelClock: Failed to set pixelclock "
+                "to minimum, pixel clock not writeable at this time.\n");
+            ret = -1;
+        }
     }
 
     // Update metadata
@@ -845,19 +860,19 @@ int getExposureTime(double* pExposureTimeMs)
     if (PEAK_IS_READABLE(accessStatus)) {
         peak_status status = peak_ExposureTime_Get(hCam, &actualExposureTimeUs);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "getExposureTime: Failed to get actual exposure \
-                time.\n");
+            fprintf(stderr, "getExposureTime: Failed to get actual exposure "
+                "time.\n");
             ret = -1;
         } else {
             if (verbose) {
-                printf("getExposureTime: Actual exposure time is %f (us)\n",
+                printf("getExposureTime: Actual exposure time is %f us\n",
                     actualExposureTimeUs);
             }
             *pExposureTimeMs = actualExposureTimeUs * 1000.0;
         }
     } else {
-        fprintf(stderr, "getExposureTime: Failed to get actual exposure \
-            time, exposure time not readable at this time.\n");
+        fprintf(stderr, "getExposureTime: Failed to get actual exposure "
+            "time, exposure time not readable at this time.\n");
         ret = -1;
     }
 
@@ -889,23 +904,23 @@ int setExposureTime(double exposureTimeMs)
             &maxExposureTimeUs, &incExposureTimeUs);
 
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "setExposureTime: Failed to check exposure time \
-                range. Continuing.\n");
+            fprintf(stderr, "setExposureTime: Failed to check exposure time "
+                "range. Continuing.\n");
         } else {
             if (verbose) {
-                printf("setExposureTime: Available exposure time range is \
-                    %f - %f, step %f (us).\n",
-                    minExposureTimeUs, maxExposureTimeUs, incExposureTimeUs);
+                printf("setExposureTime: Available exposure time range is "
+                    "%f - %f, step %f us.\n", minExposureTimeUs,
+                    maxExposureTimeUs, incExposureTimeUs);
             }
         }
 
         if (exposureTimeUs < minExposureTimeUs) {
             exposureTimeUs = minExposureTimeUs;
-            printf("setExposureTime: Requested exposure too short. Corrected to %f (us).\n",
+            printf("setExposureTime: Requested exposure too short. Corrected to %f us.\n",
                 exposureTimeUs);
         } else if (exposureTimeUs > maxExposureTimeUs) {
             exposureTimeUs = maxExposureTimeUs;
-            printf("setExposureTime: Requested exposure too long. Corrected to %f (us).\n",
+            printf("setExposureTime: Requested exposure too long. Corrected to %f us.\n",
                 exposureTimeUs);
         }
     }
@@ -916,14 +931,13 @@ int setExposureTime(double exposureTimeMs)
     if (PEAK_IS_WRITEABLE(accessStatus)) {
         status = peak_ExposureTime_Set(hCam, exposureTimeUs);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "setExposureTime: Failed to set requested exposure \
-                time %f (us).\n",
-                exposureTimeUs);
+            fprintf(stderr, "setExposureTime: Failed to set requested exposure "
+                "time %f us.\n", exposureTimeUs);
             ret = -1;
         }
     } else {
-        fprintf(stderr, "setExposureTime: Exposure time is not writable at \
-            this time.\n");
+        fprintf(stderr, "setExposureTime: Exposure time is not writeable at "
+            "this time.\n");
         ret = -1;
     }
 
@@ -955,8 +969,8 @@ int getAutoBlackLevelEnabled(int* pIsEnabled)
             *pIsEnabled = 0;
         }
     } else {
-        fprintf(stderr, "getAutoBlackLevelEnabled: Failed to get state of auto \
-            black level offset, not readable at this time.\n");
+        fprintf(stderr, "getAutoBlackLevelEnabled: Failed to get state of auto "
+            "black level offset, not readable at this time.\n");
         ret = -1;
     }
     return ret;
@@ -976,13 +990,13 @@ int disableAutoBlackLevel(void)
     if (PEAK_IS_WRITEABLE(accessStatus)) {
         peak_status status = peak_BlackLevel_Auto_Enable(hCam, PEAK_FALSE);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "disableAutoBlackLevel: Setting auto black level \
-                off failed.\n");
+            fprintf(stderr, "disableAutoBlackLevel: Setting auto black level "
+                "off failed.\n");
             ret = -1;
         }
     } else {
-        fprintf(stderr, "disableAutoBlackLevel: Failed to disable auto black \
-            level offset, not writable at this time.\n");
+        fprintf(stderr, "disableAutoBlackLevel: Failed to disable auto black "
+            "level offset, not writeable at this time.\n");
         ret = -1;
     }
 
@@ -1008,7 +1022,8 @@ int getBlackLevelOffset(double* pCurrentBlackLevelOffset)
     if (PEAK_IS_READABLE(accessStatus)) {
         peak_status status = peak_BlackLevel_Offset_Get(hCam, pCurrentBlackLevelOffset);
         if(!checkForSuccess(status)) {
-            fprintf(stderr, "getBlackLevelOffset: Failed to get black level offset.\n");
+            fprintf(stderr, "getBlackLevelOffset: Failed to get black level "
+                "offset.\n");
             ret = -1;
         } else {
             if (verbose) {
@@ -1017,8 +1032,8 @@ int getBlackLevelOffset(double* pCurrentBlackLevelOffset)
             }
         }
     } else {
-        fprintf(stderr, "getBlackLevelOffset: Failed to get actual black level \
-            offset value, value not readable at this time.\n");
+        fprintf(stderr, "getBlackLevelOffset: Failed to get actual black level "
+            "offset value, value not readable at this time.\n");
         ret = -1;
     }
     return ret;
@@ -1041,13 +1056,13 @@ int setBlackLevelOffset(double blackLevelOffset)
     if (PEAK_IS_WRITEABLE(accessStatus)) {
         peak_status status = peak_BlackLevel_Offset_Set(hCam, blackLevelOffset);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "setBlackLevelOffset: Setting black level offset \
-                value failed.\n");
+            fprintf(stderr, "setBlackLevelOffset: Setting black level offset "
+                "value failed.\n");
             ret = -1;
         }
     } else {
-        fprintf(stderr, "setBlackLevelOffset: Failed to set black level offset \
-            value, value not writeable at this time.\n");
+        fprintf(stderr, "setBlackLevelOffset: Failed to set black level offset "
+            "value, value not writeable at this time.\n");
         ret = -1;
     }
 
@@ -1209,8 +1224,8 @@ int initCamera(void)
     peak_status status = peak_CameraSettings_DiskFile_Store(hCam,
         initialParameterFile);
     if (!checkForSuccess(status)) {
-        fprintf(stderr, "ERROR: Failed to dump camera settings to disk %s on \
-            startup.\n", initialParameterFile);
+        fprintf(stderr, "ERROR: Failed to dump camera settings to disk %s on "
+            "startup.\n", initialParameterFile);
     }
 
     if (verbose) {
@@ -1278,8 +1293,8 @@ void closeCamera(void)
     if (PEAK_TRUE == peak_Acquisition_IsStarted(hCam)) {
         peak_status status = peak_Acquisition_Stop(hCam);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "ERROR: Failed to stop image acquisition. Exiting \
-                anyway\n");
+            fprintf(stderr, "ERROR: Failed to stop image acquisition. Exiting "
+                "anyway.\n");
         }
     }
 
@@ -1291,8 +1306,8 @@ void closeCamera(void)
     peak_status status = peak_CameraSettings_DiskFile_Store(hCam,
         finalParameterFile);
     if (!checkForSuccess(status)) {
-        fprintf(stderr, "ERROR: Failed to dump camera settings to disk %s on \
-            startup.\n", finalParameterFile);
+        fprintf(stderr, "ERROR: Failed to dump camera settings to disk %s on "
+            "shutdown.\n", finalParameterFile);
     }
 
 
@@ -2044,8 +2059,8 @@ int getNumberOfCameras(int* pNumCams) {
     size_t cameraListLength = 0;
     peak_status status = peak_CameraList_Get(NULL, &cameraListLength);
     if (!checkForSuccess(status)) {
-        fprintf(stderr, "ERROR: Getting the camera list length failed! Status: \
-            %#06x\n", status);
+        fprintf(stderr, "getNumberOfCameras: Getting the camera list length "
+            "failed.\n");
         (void)peak_Library_Exit();
         return -1;
     }
@@ -2269,8 +2284,8 @@ int imageTransfer(uint16_t* pUnpackedImage, char* filename)
     }
 
     // wait for image transfer
-    peak_status status = peak_Acquisition_WaitForFrame(hCam, three_frame_times_timeout_ms,
-        &hFrame);
+    peak_status status = peak_Acquisition_WaitForFrame(hCam,
+        three_frame_times_timeout_ms, &hFrame);
     if(status == PEAK_STATUS_TIMEOUT) {
         fprintf(stderr, "ERROR: WaitForFrame timed out after 3 frame times.\n");
         return -1;
@@ -2307,8 +2322,8 @@ int imageTransfer(uint16_t* pUnpackedImage, char* filename)
     // For the Mono12 unpacked format, each pixel occupies two bytes, and we can
     // iterate after casting the memory pointer
     if (verbose) {
-        printf("imageTransfer: Unpacking image bytes: %ld into local buffer of \
-            size %ld\n", buffer.memorySize,
+        printf("imageTransfer: Unpacking image bytes: %ld into local buffer of "
+            "size %ld\n", buffer.memorySize,
             (sizeof(uint16_t) * CAMERA_WIDTH * CAMERA_HEIGHT));
     }
 
