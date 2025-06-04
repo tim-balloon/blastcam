@@ -17,6 +17,12 @@
 #include "matrix.h"
 #include "sc_data_structures.h"
 
+#define MIN_BLOBS 4
+#define MAX_BLOBS 9999
+
+void merge(double A[], int p, int q, int r, double X[],double Y[]);
+void part(double A[], int p, int r, double X[], double Y[]);
+
 #ifdef IDS_PEAK
 #include <ids_peak_comfort_c/ids_peak_comfort_c.h>
 peak_camera_handle hCam = PEAK_INVALID_HANDLE;
@@ -81,12 +87,6 @@ IMAGE_FILE_PARAMS ImageFileParams;
 // same with sensorInfo struct
 SENSORINFO sensorInfo;
 #endif
-
-#define MIN_BLOBS 4
-#define MAX_BLOBS 9999
-
-void merge(double A[], int p, int q, int r, double X[],double Y[]);
-void part(double A[], int p, int r, double X[], double Y[]);
 
 // global variables
 int image_solved[2] = {0};
