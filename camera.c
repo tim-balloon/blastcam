@@ -20,6 +20,57 @@
 #ifdef IDS_PEAK
 #include <ids_peak_comfort_c/ids_peak_comfort_c.h>
 peak_camera_handle hCam = PEAK_INVALID_HANDLE;
+
+// We include a default metadata struct here to help with initialization
+// elsewhere. This could also be handled in a template FITS with using the
+// FITSIO interface to template files.
+struct fits_metadata_t default_metadata = {
+
+    // Capture data
+
+    .origin = "blastcam",
+    .instrume = "TIMcam",
+    .telescop = "Sigma 85mm f/1.4 DG HSM ART",
+    .observat = "TIM",
+    .observer = "starcam",
+    .filename = "",
+    .date = "1970-00-00T00:00:00",
+    .utcsec = 0,
+    .utcusec = 0,
+    .filter = "B+W 091 (630nm)",
+    .ccdtemp = 0.0,
+    .focus = 0,
+    .aperture = 14,
+    .exptime = 0.1,
+    .bunit = "ADU",
+
+    // Compression settings
+
+    .fzalgor = "RICE_1",
+    .fztile = "ROW",
+
+    // Sensor settings
+
+    .detector = "iDS U3-31N0CP-M-GL Rev. 2.2",
+    .sensorid = 0,
+    .bitdepth = 12,
+    .pixscal1 = 6.63,
+    .pixscal2 = 6.63,
+    .pixsize1 = 2.74,
+    .pixsize2 = 2.74,
+    .darkcur = 1.38,
+    .rdnoise1 = 2.37,
+    .ccdbin1 = 1,
+    .ccdbin2 = 1,
+    .pixelclk = 99,
+    .framerte = 1.0,
+    .gainfact = 1.0,
+    .trigdlay = 0.0,
+    .bloffset = 0.0,
+    .autogain = 0,
+    .autoexp = 0,
+    .autoblk = 0
+};
 #else
 #include <ueye.h>
 // 1-254 are possible IDs. Command-line argument from user with ./commands
@@ -82,59 +133,6 @@ struct trigger_params all_trigger_params = {
     .trigger = 0, // not starting off triggered
     .trigger_mode = 0, // default to 
 };
-
-#ifdef IDS_PEAK
-// We include a default metadata struct here to help with initialization
-// elsewhere. This could also be handled in a template FITS with using the
-// FITSIO interface to template files.
-struct fits_metadata_t default_metadata = {
-
-    // Capture data
-
-    .origin = "blastcam",
-    .instrume = "TIMcam",
-    .telescop = "Sigma 85mm f/1.4 DG HSM ART",
-    .observat = "TIM",
-    .observer = "starcam",
-    .filename = "",
-    .date = "1970-00-00T00:00:00",
-    .utcsec = 0,
-    .utcusec = 0,
-    .filter = "B+W 091 (630nm)",
-    .ccdtemp = 0.0,
-    .focus = 0,
-    .aperture = 14,
-    .exptime = 0.1,
-    .bunit = "ADU",
-
-    // Compression settings
-
-    .fzalgor = "RICE_1",
-    .fztile = "ROW",
-
-    // Sensor settings
-
-    .detector = "iDS U3-31N0CP-M-GL Rev. 2.2",
-    .sensorid = 0,
-    .bitdepth = 12,
-    .pixscal1 = 6.63,
-    .pixscal2 = 6.63,
-    .pixsize1 = 2.74,
-    .pixsize2 = 2.74,
-    .darkcur = 1.38,
-    .rdnoise1 = 2.37,
-    .ccdbin1 = 1,
-    .ccdbin2 = 1,
-    .pixelclk = 99,
-    .framerte = 1.0,
-    .gainfact = 1.0,
-    .trigdlay = 0.0,
-    .bloffset = 0.0,
-    .autogain = 0,
-    .autoexp = 0,
-    .autoblk = 0
-};
-#endif
 
 
 /* Helper function to determine if a year is a leap year (2020 is a leap year).
