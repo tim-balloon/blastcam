@@ -226,8 +226,8 @@ int initLensAdapter(char * path) {
 
     // open file descriptor with given path
     if ((file_descriptor = open(path, O_RDWR | O_NOCTTY)) < 0) {
-        fprintf(stderr, "Error opening file descriptor to input path: %s.\n", 
-                strerror(errno));
+        fprintf(stderr, "Error opening file descriptor to input path %s: %s.\n", 
+                path, strerror(errno));
         return -1;
     }
 
@@ -415,6 +415,12 @@ int beginAutoFocus() {
 */
 int defaultFocusPosition() {
     char focus_str_cmd[10];
+
+    // Always start by checking current focuser pos, to get correct delta.
+    if (runCommand("fp\r", file_descriptor, birger_output) == -1) {
+        printf("Failed to print the new focus position.\n");
+        return -1;
+    }
 
     printf("> Moving to default focus position..\n");
     printf("(*) Default focus = %d, all_camera_params.focus_position = %d, "
@@ -604,7 +610,7 @@ int adjustCameraHardware() {
     if (all_camera_params.max_aperture == 1) {
         // might as well change struct field here since we know what maximum 
         // aperture position is (don't have to get it with pa command)
-        all_camera_params.current_aperture = 28;
+        all_camera_params.current_aperture = 14; // Sigma 85mm f/1.4
 
         if (runCommand("mo\r", file_descriptor, birger_output) == -1) {
             printf("Setting the aperture to maximum fails.\n");

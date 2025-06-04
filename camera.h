@@ -79,13 +79,13 @@ struct fits_metadata_t {
     char observat[10]; // OBSERVAT: observatory name
     char observer[10]; // OBSERVER: observer name
     char filename[200]; // FILENAME: basename + ext on disk
-    char date[200]; // DATE: time of file creation (UTC)
-    char utc_obs[200]; // UTC-OBS: time of observation start (UTC)
-    float julian; // JULIAN: Julian date of obs start
-    char filter[20]; // FILTER: fileter name
+    char date[200]; // DATE: time of file creation (UTC) to nearest second
+    uint64_t utcsec; // UTC-OBS-SEC: time of observation start, whole seconds portion since UNIX epoch
+    uint64_t utcusec; // UTC-OBS-USEC: time of observation start, microseconds portion since UNIX epoch
+    char filter[20]; // FILTER: filter name
     float ccdtemp; // CCDTEMP: camera temp (C)
     int16_t focus; // FOCUS: focus position (encoder units)
-    int8_t aperture; // APERTURE: aperture position (10x fstop)
+    int16_t aperture; // APERTURE: aperture position (10x fstop)
     float exptime; // EXPTIME: total exposure time (s)
     char bunit[4]; // BUNIT: physical unit of array values (ADU)
 
@@ -98,6 +98,7 @@ struct fits_metadata_t {
     // Sensor settings
 
     char detector[64]; // DETECTOR: sensor name
+    uint64_t sensorid; // SENSORID: camera unique numerical identifier
     uint8_t bitdepth; // BITDEPTH: requested bit depth of camera, not equivalent to BITPIX
     float pixscal1; // PIXSCAL1: plate scale, axis 1 (arcsec/px)
     float pixscal2; // PIXSCAL2: plate scale, axis 2 (arcsec/px)
@@ -114,8 +115,7 @@ struct fits_metadata_t {
     float trigdlay; // TRIGDLAY: trigger delay (ms)
     uint16_t bloffset; // BLOFFSET: black level offset setting, arb units
     int16_t autogain; // AUTOGAIN: automatic gain control on (1) off (0)
-    int16_t autoshut; // AUTOSHUT: automatic shutter control on (1) off (0)
-    int16_t autofrte; // AUTOFRTE: automatic framerate control on (1) off (0)
+    int16_t autoexp; // AUTOEXP: automatic exposure control on (1) off (0)
     int16_t autoblk; // AUTOBLK: automatic black level offset on (1) off (0)
 
     // TODO(evanmayer): add more WCS info fields?
@@ -143,14 +143,17 @@ int loadCamera();
 int initCamera();
 int getNumberOfCameras(int* pNumCams);
 int setExposureTime(double exposureTimeMs);
-double getFps(void);
+
 int imageCapture(void);
 #ifndef IDS_PEAK
+double getFps(void);
 int imageTransfer(uint16_t* pUnpackedImage);
 int saveImageToDisk(char* filename);
 #else
+int getFps(double* pCurrentFps);
 int imageTransfer(uint16_t* pUnpackedImage, char* filename);
 int saveImageToDisk(char* filename, peak_frame_handle hFrame);
+int recordMetadata(void);
 #endif
 int doCameraAndAstrometry();
 void clean();

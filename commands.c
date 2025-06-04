@@ -394,7 +394,6 @@ void * processClient(void * for_client_thread) {
             break;
         } 
 
-
         if (send(socket, camera_raw, sizeof(camera_raw), 
                  MSG_NOSIGNAL) <= 0) {
             printf("Client dropped the connection.\n");
