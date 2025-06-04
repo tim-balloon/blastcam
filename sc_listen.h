@@ -27,7 +27,6 @@
 
 
 void set_status(char * ip, char * listen, int value);
-int aperture_allowed(float aperture_value);
 int check_AF_params(struct star_cam_capture data);
 void process_command_packet(struct star_cam_capture data);
 void *listen_thread(void *args);

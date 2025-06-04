@@ -84,20 +84,6 @@ void set_status(char * ip, char * listen, int value) {
     return;
 }
 
-// function to check if aperture value is one of the allowed numbers
-int aperture_allowed(float aperture_value) {
-    static float allowed_apertures[] = {2.8, 3.0, 3.3, 3.6, 4.0, 4.3, 4.7, 5.1, 5.6, 6.1, 6.7, 7.3, 8.0, 8.7, 9.5, 10.3, 
-                          11.3, 12.3, 13.4, 14.6, 16.0, 17.4, 19.0, 20.7, 22.6, 24.6, 26.9, 29.3, 32.0};
-    int arrLen = sizeof allowed_apertures / sizeof allowed_apertures[0];
-    for (int i = 0; i < arrLen; i++)
-    {
-        if (allowed_apertures[i] == aperture_value) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
 int check_AF_params(struct star_cam_capture data) {
     // check to make sure the end-start is an integer multiple of step size
     int distance;
