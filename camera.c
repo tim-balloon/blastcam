@@ -16,13 +16,13 @@
 #include "lens_adapter.h"
 #include "matrix.h"
 #include "sc_data_structures.h"
-#include "convolve.h"
+// #include "convolve.h"
 #include "fits_utils.h"
 
 #define MIN_BLOBS 4
 #define MAX_BLOBS 9999
 
-#define AF_ALGORITHM_NEW
+// #define AF_ALGORITHM_NEW
 
 void merge(double A[], int p, int q, int r, double X[],double Y[]);
 void part(double A[], int p, int r, double X[], double Y[]);
@@ -117,8 +117,8 @@ int prev_dynamic_hp;
 
 // For realtime contrast AF
 // Have to declare here or we'd run out of stack space and mysterious-looking SEGFAULT
-int32_t imageBuffer[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
-int32_t sobelResult[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
+// int32_t imageBuffer[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
+// int32_t sobelResult[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
 
 /* Blob parameters global structure (defined in camera.h) */
 struct blob_params all_blob_params = {
