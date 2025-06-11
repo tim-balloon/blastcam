@@ -83,9 +83,8 @@ int imageTransfer(uint16_t* pUnpackedImage);
 int saveImageToDisk(char* filename);
 #else
 int getFps(double* pCurrentFps);
-int imageTransfer(uint16_t* pUnpackedImage, char* filename);
+int imageTransfer(uint16_t* pUnpackedImage);
 int saveImageToDisk(char* filename, peak_frame_handle hFrame);
-int recordMetadata(void);
 #endif
 int doCameraAndAstrometry();
 void clean();

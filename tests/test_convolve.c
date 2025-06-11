@@ -60,12 +60,13 @@ int main(int argc, char* argv[]) {
     struct timespec tstart = {0,0};
     struct timespec tend = {0,0};
 
+    uint16_t fakeMean = 0; // not actually the mean, but fulfills signature
     int nCalls = 10;
     while (nCalls > 0) {
         nCalls -= 1;
         clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tstart);
 
-        doConvolution(imageBuffer, imageWidth, imageNumPix, mask, kernel, kernelSize, imageResult);
+        doConvolution(imageBuffer, fakeMean, imageWidth, imageNumPix, mask, kernel, kernelSize, imageResult);
 
         // post process
         int32_t sqSum = 0.0;

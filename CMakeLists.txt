@@ -11,10 +11,12 @@ set(CMAKE_C_FLAGS_DEBUG "-O0 -fno-omit-frame-pointer -ggdb -g3")
 
 # Create target executable
 add_executable (${PROJECT_NAME}
-    commands.c commands.h
-    camera.c camera.h
-    lens_adapter.c lens_adapter.h
     astrometry.c astrometry.h
+    camera.c camera.h
+    commands.c commands.h
+    convolve.c convolve.h
+    fits_utils.c fits_utils.h
+    lens_adapter.c lens_adapter.h
     matrix.c matrix.h
     sc_send.c sc_send.h
     sc_listen.c sc_listen.h
@@ -61,6 +63,7 @@ target_link_libraries (${PROJECT_NAME}
     ids_peak_afl
     ${PEAK_IFL_PATH}
     ids_peak_ipl
+    cfitsio
     m
 )
 

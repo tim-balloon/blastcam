@@ -564,7 +564,7 @@ int disableAutoExposure(void)
     // Update metadata
     int autoExposureIsEnabled = 0;
     getAutoExposureEnabled(&autoExposureIsEnabled);
-    default_metadata.autoexp = (int16_t)autoExposureIsEnabled;
+    default_metadata.autoexp = (int8_t)autoExposureIsEnabled;
 
     return ret;
 }
@@ -630,7 +630,7 @@ int disableAutoGain(void)
     // Update metadata
     int autoGainIsEnabled = 0;
     getAutoGainEnabled(&autoGainIsEnabled);
-    default_metadata.autogain = (int16_t)autoGainIsEnabled;
+    default_metadata.autogain = (int8_t)autoGainIsEnabled;
 
     return ret;
 }
@@ -1017,7 +1017,7 @@ int disableAutoBlackLevel(void)
     // Update metadata
     int autoBlackLevelIsEnabled = 0;
     getAutoBlackLevelEnabled(&autoBlackLevelIsEnabled);
-    default_metadata.autoblk = (int16_t)autoBlackLevelIsEnabled;
+    default_metadata.autoblk = (int8_t)autoBlackLevelIsEnabled;
 
     return ret;
 }
@@ -2229,53 +2229,6 @@ int imageTransfer(uint16_t* pUnpackedImage)
     return 0;
 }
 #else
-/**
- * @brief Perform fresh queries on any quantities that may need to be updated
- * for inclusion in metadata logging. Must be called after imageCapture() to get
- * a microsecond-accurate updated timestamp
- * 
- * @param
- * @return int -1 if failed, 0 otherwise
- */
-int recordMetadata(void)
-{
-    int ret = 0;
-
-    // Record file creation date as str
-    time_t seconds = time(NULL);
-    struct tm* tm_info;
-    tm_info = gmtime(&seconds);
-    // if it is a leap year, adjust tm_info accordingly before it is passed to 
-    // calculations in lostInSpace
-    if (isLeapYear(tm_info->tm_year)) {
-        // if we are on Feb 29
-        if (tm_info->tm_yday == 59) {
-            // 366 days in a leap year
-            tm_info->tm_yday++;
-            // we are still in February 59 days after January 1st (Feb 29)
-            tm_info->tm_mon -= 1;
-            tm_info->tm_mday = 29;
-        } else if (tm_info->tm_yday > 59) {
-            tm_info->tm_yday++;
-        }
-    }
-    strftime(default_metadata.date, sizeof(default_metadata.date),
-        "%Y-%m-%d_%H:%M:%S", tm_info);
-
-    // Record the whole number and microsecond parts of the timestamp as the
-    // time of observation start
-    default_metadata.utcsec = (uint64_t)metadataTv.tv_sec;
-    default_metadata.utcusec = (uint64_t)metadataTv.tv_usec;
-
-    // TODO(evanmayer): ccdtemp, not sure if there's a way to do this in peak API
-
-    // Focus and aperture commands update this member after the command is
-    // issued. So it should be current, and we don't want to ask the lens again.
-    default_metadata.focus = (int16_t)all_camera_params.focus_position;
-    default_metadata.aperture = (int16_t)all_camera_params.current_aperture;
-
-    return ret;
-}
 
 
 /**
@@ -2288,8 +2241,9 @@ int recordMetadata(void)
  * THE UNPACKED IMAGE.
  * @return int status: -1 for failure, 0 otherwise.
  */
-int imageTransfer(uint16_t* pUnpackedImage, char* filename)
+int imageTransfer(uint16_t* pUnpackedImage)
 {
+    int ret = 0;
     peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
     double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
     getExposureTime(&actualExpTimeMs);
@@ -2299,6 +2253,9 @@ int imageTransfer(uint16_t* pUnpackedImage, char* filename)
         printf("imageTransfer: Waiting for frame...\n");
     }
 
+    // ---------------------------------------------------------------------- //
+    // Actual data transfer
+    // ---------------------------------------------------------------------- //
     // wait for image transfer
     peak_status status = peak_Acquisition_WaitForFrame(hCam,
         three_frame_times_timeout_ms, &hFrame);
@@ -2346,22 +2303,68 @@ int imageTransfer(uint16_t* pUnpackedImage, char* filename)
     unpack_mono12((uint16_t *)buffer.memoryAddress, pUnpackedImage,
         CAMERA_WIDTH * CAMERA_HEIGHT);
 
-    if (recordMetadata() < 0) {
-        fprintf(stderr, "WARNING: Failed to update metadata struct.\n");
-    }
+    // ---------------------------------------------------------------------- //
+    // Metadata handling and file saving
+    // ---------------------------------------------------------------------- //
+    // if (saveImageToDisk(filename, hFrame) < 0) {
+    //     fprintf(stderr, "WARNING: Failed to save frame to disk.\n");
+    // }
 
-    // NOTE(evanmayer): for now, save to disk in here. Later, the unpacked
-    // buffer will be written to disk as FITS and we should remove this.
-    if (saveImageToDisk(filename, hFrame) < 0) {
-        fprintf(stderr, "WARNING: Failed to save frame to disk.\n");
+    // Record the whole number and microsecond parts of the timestamp as the
+    // time of observation start
+    default_metadata.utcsec = (uint64_t)metadataTv.tv_sec;
+    default_metadata.utcusec = (uint64_t)metadataTv.tv_usec;
+
+    // TODO(evanmayer): ccdtemp, not sure if there's a way to do this in peak API
+
+    // Focus and aperture commands update this member after the command is
+    // issued. So it should be current, and we don't want to ask the lens again.
+    default_metadata.focus = (int16_t)all_camera_params.focus_position;
+    default_metadata.aperture = (int16_t)all_camera_params.current_aperture;
+
+    // Record file creation date as str
+    time_t seconds = time(NULL);
+    struct tm* tm_info;
+    tm_info = gmtime(&seconds);
+    // if it is a leap year, adjust tm_info accordingly before it is passed to 
+    // calculations in lostInSpace
+    if (isLeapYear(tm_info->tm_year)) {
+        // if we are on Feb 29
+        if (tm_info->tm_yday == 59) {
+            // 366 days in a leap year
+            tm_info->tm_yday++;
+            // we are still in February 59 days after January 1st (Feb 29)
+            tm_info->tm_mon -= 1;
+            tm_info->tm_mday = 29;
+        } else if (tm_info->tm_yday > 59) {
+            tm_info->tm_yday++;
+        }
+    }
+    // Copy the creation date into the metadata struct
+    strftime(default_metadata.date, sizeof(default_metadata.date),
+        "%Y-%m-%d_%H:%M:%S", tm_info);
+
+    char FITSfilename[256] = "";
+    // Create the output filename
+    strftime(FITSfilename, sizeof(FITSfilename),
+        "/home/starcam/Desktop/TIMSC/BMPs/"
+        "saved_image_%Y-%m-%d_%H:%M:%S.fits.gz", tm_info);
+
+    // Write the FITS File
+    int FITSstatus = writeImage(FITSfilename, pUnpackedImage, CAMERA_WIDTH,
+        CAMERA_HEIGHT, &default_metadata);
+    if (0 != FITSstatus) {
+        fprintf(stderr, "ERROR: writeImage failed.\n");
+        ret = -1;
     }
 
     status = peak_Frame_Release(hCam, hFrame);
     if(!checkForSuccess(status)) {
         fprintf(stderr, "ERROR: Frame_Release failed.\n");
+        ret = -1;
     }
 
-    return 0;
+    return ret;
 }
 #endif
 
@@ -3572,8 +3575,7 @@ int doCameraAndAstrometry(void)
         return -1;
     }
     #else
-    char tmpFileName[] = "/home/starcam/Desktop/TIMSC/BMPs/image.png";
-    if (imageTransfer(unpacked_image, tmpFileName) < 0) {
+    if (imageTransfer(unpacked_image) < 0) {
         fprintf(stderr, "Could not complete image transfer: %s.\n", 
            strerror(errno));
         return -1;
@@ -3884,17 +3886,17 @@ int doCameraAndAstrometry(void)
     // The frame was saved to disk at transfer time, when the frame handle was
     // available, with a generic name. Now that we have the final filename,
     // rename the generic saved file on disk.
-    if (rename(tmpFileName, filename)) {
-        fprintf(stderr, "Unable to rename captured image file to %s: %s.\n",
-            filename, strerror(errno));
-    }
+    // if (rename(tmpFileName, filename)) {
+    //     fprintf(stderr, "Unable to rename captured image file to %s: %s.\n",
+    //         filename, strerror(errno));
+    // }
     #endif
 
-    printf("Saving captured frame to \"%s\"\n", filename);
+    // printf("Saving captured frame to \"%s\"\n", filename);
     // unlink whatever the latest saved image was linked to before
-    unlink("/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
+    // unlink("/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
     // sym link current date to latest image for live Kst updates
-    symlink(date, "/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
+    // symlink(date, "/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
 
     // make a table of blobs for Kst
     if (makeTable("makeTable.txt", star_mags, star_x, star_y, blob_count) != 1) {

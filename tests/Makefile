@@ -1,3 +1,6 @@
+test_convolve:
+	gcc test_convolve.c ../convolve.c -lm
+
 test_fits:
-	gcc test_fits.c ../fits_utils.c -l cfitsio
+	gcc -g -g3 test_fits.c ../fits_utils.c -lcfitsio
 

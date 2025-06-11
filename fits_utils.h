@@ -63,9 +63,9 @@ struct fits_metadata_t {
     // GAIN1: sensor gain, e-/DN...depends on GAINFACT, not known a-priori unless calibrated
     float trigdlay; // TRIGDLAY: trigger delay (ms)
     uint16_t bloffset; // BLOFFSET: black level offset setting, arb units
-    int16_t autogain; // AUTOGAIN: automatic gain control on (1) off (0)
-    int16_t autoexp; // AUTOEXP: automatic exposure control on (1) off (0)
-    int16_t autoblk; // AUTOBLK: automatic black level offset on (1) off (0)
+    int8_t autogain; // AUTOGAIN: automatic gain control on (1) off (0)
+    int8_t autoexp; // AUTOEXP: automatic exposure control on (1) off (0)
+    int8_t autoblk; // AUTOBLK: automatic black level offset on (1) off (0)
 
     // TODO(evanmayer): add more WCS info fields?
     // Pointing data (to be added on plate solve?)
@@ -84,7 +84,7 @@ struct fits_metadata_t {
 
 // Provide a default initialization to the application code as a template to
 // update as needed.
-extern const struct fits_metadata_t default_metadata;
+extern struct fits_metadata_t default_metadata;
 
 int writeImage(char* fileName, uint16_t* imageMem,
     uint16_t imageWidth, uint16_t imageHeight,

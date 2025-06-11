@@ -57,10 +57,10 @@ int writeMetadata(fitsfile* fptr, struct fits_metadata_t* pMetadata)
         "basename + ext on disk", &status);
     fits_update_key(fptr, TSTRING, "DATE", &(pMetadata->date),
         "time of file creation (UTC)", &status);
-    fits_update_key(fptr, TULONGLONG, "UTC-SEC", &(pMetadata->utcsec),
+    fits_update_key(fptr, TULONG, "UTC-SEC", &(pMetadata->utcsec),
         "time of observation start, whole seconds portion since UNIX epoch",
         &status);
-    fits_update_key(fptr, TULONGLONG, "UTC-USEC", &(pMetadata->utcusec),
+    fits_update_key(fptr, TULONG, "UTC-USEC", &(pMetadata->utcusec),
         "time of observation start, microseconds portion since UNIX epoch",
         &status);
     fits_update_key(fptr, TSTRING, "FILTER", &(pMetadata->filter),
@@ -85,7 +85,7 @@ int writeMetadata(fitsfile* fptr, struct fits_metadata_t* pMetadata)
     // Sensor settings
     fits_update_key(fptr, TSTRING, "DETECTOR", &(pMetadata->detector),
         "sensor name", &status);
-    fits_update_key(fptr, TULONGLONG, "SENSORID", &(pMetadata->sensorid),
+    fits_update_key(fptr, TULONG, "SENSORID", &(pMetadata->sensorid),
         "sensor unique ID", &status);
     fits_update_key(fptr, TBYTE, "BITDEPTH", &(pMetadata->bitdepth),
         "requested bit depth of camera", &status);
@@ -128,7 +128,6 @@ int writeMetadata(fitsfile* fptr, struct fits_metadata_t* pMetadata)
 
 
 // TODO(evanmayer): implement checksum writing
-// TODO(evanmayer): implement accurate timestamping
 /**
  * @brief write a 16-bit unsigned int FITS primary array image using the given
  * memory
@@ -183,7 +182,8 @@ int writeImage(char* fileName, uint16_t* imageMem, uint16_t imageWidth,
     }
 
     // write header with metadata
-    if (writeMetadata(fptr_tmp, pMetadata)) {
+    status = writeMetadata(fptr_tmp, pMetadata);
+    if (status) {
         fits_report_error(stderr, status);
         return status;
     }
