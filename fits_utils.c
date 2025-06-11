@@ -29,54 +29,6 @@ OF THE RESULTS OF, OR USE OF, THE SOFTWARE OR SERVICES PROVIDED HEREUNDER.
 #include "fits_utils.h"
 
 
-// We include a default metadata struct here to help with initialization
-// elsewhere. This could also be handled in a template FITS with using the
-// FITSIO interface to template files.
-const struct fits_metadata_t default_metadata = {
-
-    // Capture data
-
-    .origin = "blastcam",
-    .instrume = "TIMcam",
-    .telescop = "Sigma 85mm f/1.4 DG HSM ART",
-    .observat = "TIM",
-    .observer = "starcam",
-    .filename = "",
-    .date = "1970-00-00T00:00:00",
-    .utc_obs = "1970-00-00T00:00:00",
-    .julian = 2440587.500000,
-    .filter = "Tiffen R29",
-    .ccdtemp = 0.0,
-    .focus = 0,
-    .aperture = 14,
-    .exptime = 0.1,
-    .bunit = "ADU",
-
-    // Compression settings
-
-    .fzalgor = "RICE_1",
-    .fztile = "ROW",
-
-    // Sensor settings
-
-    .detector = "iDS U3-31N0CP-M-GL Rev. 2.2",
-    .bitdepth = 12,
-    .pixscal1 = 0.0, // TODO(evanmayer)
-    .pixscal2 = 0.0, // TODO(evanmayer)
-    .pixsize1 = 2.74,
-    .pixsize2 = 2.74,
-    .darkcur = 1.38,
-    .rdnoise1 = 2.37,
-    .ccdbin1 = 1,
-    .ccdbin2 = 1,
-    .pixelclk = 99,
-    .framerte = 1.0,
-    .gainfact = 0,
-    .bloffset = 6,
-    .autogain = FALSE,
-    .gainbst = FALSE
-};
-
 /**
  * @brief Helper function to write FITS header info from metadata struct
  * 
@@ -105,17 +57,19 @@ int writeMetadata(fitsfile* fptr, struct fits_metadata_t* pMetadata)
         "basename + ext on disk", &status);
     fits_update_key(fptr, TSTRING, "DATE", &(pMetadata->date),
         "time of file creation (UTC)", &status);
-    fits_update_key(fptr, TSTRING, "UTC-OBS", &(pMetadata->utc_obs),
-        "time of observation start (UTC)", &status);
-    fits_update_key(fptr, TFLOAT, "JULIAN", &(pMetadata->julian),
-        "time of observation start (Julian)", &status);
+    fits_update_key(fptr, TULONGLONG, "UTC-SEC", &(pMetadata->utcsec),
+        "time of observation start, whole seconds portion since UNIX epoch",
+        &status);
+    fits_update_key(fptr, TULONGLONG, "UTC-USEC", &(pMetadata->utcusec),
+        "time of observation start, microseconds portion since UNIX epoch",
+        &status);
     fits_update_key(fptr, TSTRING, "FILTER", &(pMetadata->filter),
         "filter name", &status);
     fits_update_key(fptr, TFLOAT, "CCDTEMP", &(pMetadata->ccdtemp),
         "camera temp (C)", &status);
     fits_update_key(fptr, TSHORT, "FOCUS", &(pMetadata->focus),
         "focus position (encoder units)", &status);
-    fits_update_key(fptr, TBYTE, "APERTURE", &(pMetadata->aperture),
+    fits_update_key(fptr, TSHORT, "APERTURE", &(pMetadata->aperture),
         "aperture position (10x fstop)", &status);
     fits_update_key(fptr, TFLOAT, "EXPTIME", &(pMetadata->exptime),
         "total exposure time (s)", &status);
@@ -131,6 +85,8 @@ int writeMetadata(fitsfile* fptr, struct fits_metadata_t* pMetadata)
     // Sensor settings
     fits_update_key(fptr, TSTRING, "DETECTOR", &(pMetadata->detector),
         "sensor name", &status);
+    fits_update_key(fptr, TULONGLONG, "SENSORID", &(pMetadata->sensorid),
+        "sensor unique ID", &status);
     fits_update_key(fptr, TBYTE, "BITDEPTH", &(pMetadata->bitdepth),
         "requested bit depth of camera", &status);
     fits_update_key(fptr, TFLOAT, "PIXSCAL1", &(pMetadata->pixscal1),
@@ -149,18 +105,22 @@ int writeMetadata(fitsfile* fptr, struct fits_metadata_t* pMetadata)
         "x-axis binning factor", &status);
     fits_update_key(fptr, TBYTE, "CCDBIN2", &(pMetadata->ccdbin2),
         "y-axis binning factor", &status);
-    fits_update_key(fptr, TBYTE, "PIXELCLK", &(pMetadata->pixelclk),
+    fits_update_key(fptr, TFLOAT, "PIXELCLK", &(pMetadata->pixelclk),
         "pixel clock (MHz)", &status);
     fits_update_key(fptr, TFLOAT, "FRAMERTE", &(pMetadata->framerte),
         "framerate (Hz)", &status);
-    fits_update_key(fptr, TBYTE, "GAINFACT", &(pMetadata->gainfact),
-        "iDS gain factor setting (0-100)", &status);
+    fits_update_key(fptr, TFLOAT, "GAINFACT", &(pMetadata->gainfact),
+        "iDS gain factor setting", &status);
+    fits_update_key(fptr, TFLOAT, "TRIGDLAY", &(pMetadata->trigdlay),
+        "trigger delay (ms)", &status);
     fits_update_key(fptr, TUSHORT, "BLOFFSET", &(pMetadata->bloffset),
         "black level offset setting (arb units)", &status);
     fits_update_key(fptr, TLOGICAL, "AUTOGAIN", &(pMetadata->autogain),
         "automatic gain control on (1) off (0)", &status);
-    fits_update_key(fptr, TLOGICAL, "GAINBST", &(pMetadata->gainbst),
-        "gain boost settting on (1) off (0)", &status);
+    fits_update_key(fptr, TLOGICAL, "AUTOEXP", &(pMetadata->autoexp),
+        "automatic exposure control on (1) off (0)", &status);
+    fits_update_key(fptr, TLOGICAL, "AUTOBLK", &(pMetadata->autoblk),
+        "automatic black level control on (1) off (0)", &status);
 
     fits_report_error(stderr, status);
     return status;
@@ -192,7 +152,8 @@ int writeImage(char* fileName, uint16_t* imageMem, uint16_t imageWidth,
     long nelements;
 
     // initialize FITS image parameters
-    int bitpix = USHORT_IMG; // 16-bit unsigned short pixel values
+    // 16-bit unsigned short pixel values, in order to store 12bit data
+    int bitpix = USHORT_IMG;
     // In FITS, NAXIS1 is the "fast" axis (x, or increasing column #), and
     // NAXIS2 is the "slow" axis (y, or increaing row #)
     long naxes[2] = {imageWidth, imageHeight};

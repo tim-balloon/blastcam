@@ -17,6 +17,7 @@
 #include "matrix.h"
 #include "sc_data_structures.h"
 #include "convolve.h"
+#include "fits_utils.h"
 
 #define MIN_BLOBS 4
 #define MAX_BLOBS 9999
@@ -71,7 +72,7 @@ struct fits_metadata_t default_metadata = {
     .rdnoise1 = 2.37,
     .ccdbin1 = 1,
     .ccdbin2 = 1,
-    .pixelclk = 99,
+    .pixelclk = 99.0,
     .framerte = 1.0,
     .gainfact = 1.0,
     .trigdlay = 0.0,
@@ -3008,305 +3009,305 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 }
 
 
-int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm* tm_info, char* output_buffer) {
-    // Housekeeping
-    static FILE * af_file = NULL;
-    static char af_filename[256];
-    struct timeval tv;
-    double photo_time;
+// int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm* tm_info, char* output_buffer) {
+//     // Housekeeping
+//     static FILE * af_file = NULL;
+//     static char af_filename[256];
+//     struct timeval tv;
+//     double photo_time;
 
-    // AF tracking
-    uint16_t numFocusPos = 0;
-    // A upper bound on focus tries guards against focusing forever
-    // If someone accidentally orders an 8000-range, 5-step AF run or worse, we'll
-    // cut out early
-    uint16_t remainingFocusPos = 1600; 
-    char focusStrCmd[10] = {'\0'};
+//     // AF tracking
+//     uint16_t numFocusPos = 0;
+//     // A upper bound on focus tries guards against focusing forever
+//     // If someone accidentally orders an 8000-range, 5-step AF run or worse, we'll
+//     // cut out early
+//     uint16_t remainingFocusPos = 1600; 
+//     char focusStrCmd[10] = {'\0'};
 
-    // Contrast detect algorithm parameters
-    uint16_t sobelKernelx[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
-    uint16_t kernelSize = 9;
+//     // Contrast detect algorithm parameters
+//     uint16_t sobelKernelx[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
+//     uint16_t kernelSize = 9;
 
-    // Initialize focuser and AF logging
-    int bestFocusPos = all_camera_params->focus_position;
-    int32_t bestFocusGrad = 0;
+//     // Initialize focuser and AF logging
+//     int bestFocusPos = all_camera_params->focus_position;
+//     int32_t bestFocusGrad = 0;
 
-    printf("Running contrast detection AF.\n");
-    all_camera_params->begin_auto_focus = 0;
+//     printf("Running contrast detection AF.\n");
+//     all_camera_params->begin_auto_focus = 0;
 
-    // check that end focus position is at least 25 less than max focus
-    // position
-    if (all_camera_params->max_focus_pos - all_camera_params->end_focus_pos 
-        < 25) {
-        printf("Adjusting end focus position to be 25 less than max focus "
-                "position.\n");
-        all_camera_params->end_focus_pos = all_camera_params->max_focus_pos 
-                                            - 25;
-    }
+//     // check that end focus position is at least 25 less than max focus
+//     // position
+//     if (all_camera_params->max_focus_pos - all_camera_params->end_focus_pos 
+//         < 25) {
+//         printf("Adjusting end focus position to be 25 less than max focus "
+//                 "position.\n");
+//         all_camera_params->end_focus_pos = all_camera_params->max_focus_pos 
+//                                             - 25;
+//     }
 
-    // check that beginning focus position is at least 25 above min focus
-    // position
-    if (all_camera_params->start_focus_pos - all_camera_params->min_focus_pos
-        < 25) {
-        printf("Adjusting beginning focus position to be 25 more than min "
-                "focus position.\n");
-        all_camera_params->start_focus_pos = all_camera_params->min_focus_pos
-                                            + 25;
-    }
+//     // check that beginning focus position is at least 25 above min focus
+//     // position
+//     if (all_camera_params->start_focus_pos - all_camera_params->min_focus_pos
+//         < 25) {
+//         printf("Adjusting beginning focus position to be 25 more than min "
+//                 "focus position.\n");
+//         all_camera_params->start_focus_pos = all_camera_params->min_focus_pos
+//                                             + 25;
+//     }
 
-    if (af_file != NULL) {
-        fclose(af_file);
-        af_file = NULL;
-    }
+//     if (af_file != NULL) {
+//         fclose(af_file);
+//         af_file = NULL;
+//     }
 
     
-    // clear previous contents of auto-focusing file (open in write mode)
-    strftime(
-        af_filename,
-        sizeof(af_filename),
-        "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H:%M:%S.txt",
-        tm_info
-    );
-    if (verbose) {
-        printf("Opening auto-focusing text file: %s\n", af_filename);
-    }
+//     // clear previous contents of auto-focusing file (open in write mode)
+//     strftime(
+//         af_filename,
+//         sizeof(af_filename),
+//         "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H:%M:%S.txt",
+//         tm_info
+//     );
+//     if (verbose) {
+//         printf("Opening auto-focusing text file: %s\n", af_filename);
+//     }
 
-    if ((af_file = fopen(af_filename, "w")) == NULL) {
-        fprintf(stderr, "Could not open auto-focusing file: %s.\n", 
-                strerror(errno));
-        return -1;
-    }
+//     if ((af_file = fopen(af_filename, "w")) == NULL) {
+//         fprintf(stderr, "Could not open auto-focusing file: %s.\n", 
+//                 strerror(errno));
+//         return -1;
+//     }
 
-    // ECM: not sure if this is relevant for my alg - may remove
-    // turn dynamic hot pixels off to avoid removing blobs during focusing
-    prev_dynamic_hp = all_blob_params.dynamic_hot_pixels;
-    if (verbose) {
-        printf("Turning dynamic hot pixel finder off for auto-focusing.\n");
-    }
-    all_blob_params.dynamic_hot_pixels = 0;
+//     // ECM: not sure if this is relevant for my alg - may remove
+//     // turn dynamic hot pixels off to avoid removing blobs during focusing
+//     prev_dynamic_hp = all_blob_params.dynamic_hot_pixels;
+//     if (verbose) {
+//         printf("Turning dynamic hot pixel finder off for auto-focusing.\n");
+//     }
+//     all_blob_params.dynamic_hot_pixels = 0;
     
-    // link the auto-focusing txt file to Kst for plotting
-    unlink("/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
-    symlink(af_filename, 
-            "/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
+//     // link the auto-focusing txt file to Kst for plotting
+//     unlink("/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
+//     symlink(af_filename, 
+//             "/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
 
-    // get to beginning of auto-focusing range
-    if (beginAutoFocus() < 1) {
-        printf("Error beginning auto-focusing process. Skipping to taking "
-                "observing images...\n");
+//     // get to beginning of auto-focusing range
+//     if (beginAutoFocus() < 1) {
+//         printf("Error beginning auto-focusing process. Skipping to taking "
+//                 "observing images...\n");
 
-        // return to default focus position
-        if (defaultFocusPosition() < 1) {
-            printf("Error moving to default focus position.\n");
-            closeCamera();
-            return -1;
-        }
+//         // return to default focus position
+//         if (defaultFocusPosition() < 1) {
+//             printf("Error moving to default focus position.\n");
+//             closeCamera();
+//             return -1;
+//         }
 
-        // abort auto-focusing process
-        all_camera_params->focus_mode = 0;
-    }
+//         // abort auto-focusing process
+//         all_camera_params->focus_mode = 0;
+//     }
 
-    // Loop until all focus positions covered
-    bool hasGoneForward = 0;
-    bool hasGoneBackward = 0;
-    bool atFarEnd = 0;
-    bool atNearEnd = 0;
-    int dir = 1;
+//     // Loop until all focus positions covered
+//     bool hasGoneForward = 0;
+//     bool hasGoneBackward = 0;
+//     bool atFarEnd = 0;
+//     bool atNearEnd = 0;
+//     int dir = 1;
 
-    while (remainingFocusPos > 0) {
-        remainingFocusPos -= 1;
-        atFarEnd = (all_camera_params->focus_position >= all_camera_params->end_focus_pos);
-        atNearEnd = (all_camera_params->focus_position < all_camera_params->start_focus_pos);
-        if (atFarEnd) {
-            if (hasGoneForward && !hasGoneBackward) {
-                dir = -1;
-                hasGoneBackward = 1;
-            }
-        }
-        if (atNearEnd && hasGoneBackward) {
-            // Break out of AF
-            all_camera_params->focus_mode = 0;
-            printf("Quitting autofocus after fulfilling end conditions...\n");
-            break;
-        }
-        if (0 == all_camera_params->focus_mode) {
-            printf("Quitting autofocus by user cancel...\n");
-            break;
-        }
-        taking_image = 1;
-        if (verbose) {
-            printf("\n> Taking a new image...\n\n");
-        }
-        // IS_WAIT returns when image exposure->readout->preprocessing->transfer to memory is complete
-        if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
-            const char * last_error_str = printCameraError();
-            printf("Failed to capture new image: %s\n", last_error_str);
-        }
-        taking_image = 0;
+//     while (remainingFocusPos > 0) {
+//         remainingFocusPos -= 1;
+//         atFarEnd = (all_camera_params->focus_position >= all_camera_params->end_focus_pos);
+//         atNearEnd = (all_camera_params->focus_position < all_camera_params->start_focus_pos);
+//         if (atFarEnd) {
+//             if (hasGoneForward && !hasGoneBackward) {
+//                 dir = -1;
+//                 hasGoneBackward = 1;
+//             }
+//         }
+//         if (atNearEnd && hasGoneBackward) {
+//             // Break out of AF
+//             all_camera_params->focus_mode = 0;
+//             printf("Quitting autofocus after fulfilling end conditions...\n");
+//             break;
+//         }
+//         if (0 == all_camera_params->focus_mode) {
+//             printf("Quitting autofocus by user cancel...\n");
+//             break;
+//         }
+//         taking_image = 1;
+//         if (verbose) {
+//             printf("\n> Taking a new image...\n\n");
+//         }
+//         // IS_WAIT returns when image exposure->readout->preprocessing->transfer to memory is complete
+//         if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
+//             const char * last_error_str = printCameraError();
+//             printf("Failed to capture new image: %s\n", last_error_str);
+//         }
+//         taking_image = 0;
 
-        gettimeofday(&tv, NULL);
-        photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
-        all_astro_params.photo_time = photo_time;
+//         gettimeofday(&tv, NULL);
+//         photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
+//         all_astro_params.photo_time = photo_time;
 
-        // ECM kind of an abuse of the API, but it works, so I'll copy it
-        if (is_GetActSeqBuf(camera_handle, &buffer_num, &waiting_mem, &memory) 
-            != IS_SUCCESS) {
-            cam_error = printCameraError();
-            printf("Error retrieving the active image memory: %s.\n", cam_error);
-        }
+//         // ECM kind of an abuse of the API, but it works, so I'll copy it
+//         if (is_GetActSeqBuf(camera_handle, &buffer_num, &waiting_mem, &memory) 
+//             != IS_SUCCESS) {
+//             cam_error = printCameraError();
+//             printf("Error retrieving the active image memory: %s.\n", cam_error);
+//         }
 
-        // make kst display the filtered image
-        memcpy(output_buffer, memory, CAMERA_WIDTH*CAMERA_HEIGHT);
-        // pointer for transmitting to user should point to where image is in memory
-        camera_raw = output_buffer;
+//         // make kst display the filtered image
+//         memcpy(output_buffer, memory, CAMERA_WIDTH*CAMERA_HEIGHT);
+//         // pointer for transmitting to user should point to where image is in memory
+//         camera_raw = output_buffer;
 
-        // Image unpacking/type conversion
-        // 12-bit unpacking function goes here instead
-        uint32_t imageNumPix = CAMERA_WIDTH * CAMERA_HEIGHT;
-        for (uint32_t i = 0; i < imageNumPix; i++) {
-            imageBuffer[i] = (int32_t)memory[i];
-        }
+//         // Image unpacking/type conversion
+//         // 12-bit unpacking function goes here instead
+//         uint32_t imageNumPix = CAMERA_WIDTH * CAMERA_HEIGHT;
+//         for (uint32_t i = 0; i < imageNumPix; i++) {
+//             imageBuffer[i] = (int32_t)memory[i];
+//         }
 
-        // ECM N.B.: uEye API has functions to calc sharpness in hardware
-        // but they are not supported on our camera. I think they're only
-        // supported on AF-enabled camera models. I implemented it and got
-        // all 0s back. So we do it in software.
+//         // ECM N.B.: uEye API has functions to calc sharpness in hardware
+//         // but they are not supported on our camera. I think they're only
+//         // supported on AF-enabled camera models. I implemented it and got
+//         // all 0s back. So we do it in software.
 
-        // Used for edge cases in convolution and later for normalizing
-        // the contrast metric
-        int32_t imageAverage = average(imageBuffer, imageNumPix);
+//         // Used for edge cases in convolution and later for normalizing
+//         // the contrast metric
+//         int32_t imageAverage = average(imageBuffer, imageNumPix);
 
-        // Sobel filter for contrast detection
-        // Usually, you want to judge sharpness based on the magnitude of
-        // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
-        // Because we assume stars are mostly round, we can just take
-        // either and save a convolution.
-        doConvolution(imageBuffer, imageAverage, CAMERA_WIDTH, imageNumPix, mask,
-            sobelKernelx, kernelSize, sobelResult);
-        // Let the sharpness metric be the sum of squared gradients, as
-        // estimated by the Sobel operator
-        int64_t sobelMetric = 0;
-        for (uint32_t i = 0; i < imageNumPix; i++) {
-            int32_t result = sobelResult[i];
-            sobelMetric += result * result;
-        }
+//         // Sobel filter for contrast detection
+//         // Usually, you want to judge sharpness based on the magnitude of
+//         // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
+//         // Because we assume stars are mostly round, we can just take
+//         // either and save a convolution.
+//         doConvolution(imageBuffer, imageAverage, CAMERA_WIDTH, imageNumPix, mask,
+//             sobelKernelx, kernelSize, sobelResult);
+//         // Let the sharpness metric be the sum of squared gradients, as
+//         // estimated by the Sobel operator
+//         int64_t sobelMetric = 0;
+//         for (uint32_t i = 0; i < imageNumPix; i++) {
+//             int32_t result = sobelResult[i];
+//             sobelMetric += result * result;
+//         }
 
-        // We normalize by something proportional to the shot noise in the
-        // image to handle cases where the shot noise, and thus the sum of
-        // squared gradients, is changing rapidly during an AF run
-        // if (0 != imageAverage) {
-        //     sobelMetric /= imageAverage;
-        // }
+//         // We normalize by something proportional to the shot noise in the
+//         // image to handle cases where the shot noise, and thus the sum of
+//         // squared gradients, is changing rapidly during an AF run
+//         // if (0 != imageAverage) {
+//         //     sobelMetric /= imageAverage;
+//         // }
 
-        // Save off commanded position and max gradient in image
-        if (sobelMetric >= bestFocusGrad) {
-            bestFocusGrad = sobelMetric;
-            bestFocusPos = (int32_t)all_camera_params->focus_position;
-        }
+//         // Save off commanded position and max gradient in image
+//         if (sobelMetric >= bestFocusGrad) {
+//             bestFocusGrad = sobelMetric;
+//             bestFocusPos = (int32_t)all_camera_params->focus_position;
+//         }
 
-        // Save off data in AF logfile
-        // TODO: FIXME: flux is int, sobelMetric is int64_t...
-        // sobelMetric is gradient sharpness metric, not flux,
-        // but same diff...har har
-        all_camera_params->flux = (int)sobelMetric;
-        printf("(*) Sobel metric in image for focus %d is %li or %li.\n",
-            all_camera_params->focus_position,
-            sobelMetric, (int)sobelMetric);
-        fprintf(af_file, "%3li\t%5d\n", sobelMetric,
-                all_camera_params->focus_position);
-        fflush(af_file);
+//         // Save off data in AF logfile
+//         // TODO: FIXME: flux is int, sobelMetric is int64_t...
+//         // sobelMetric is gradient sharpness metric, not flux,
+//         // but same diff...har har
+//         all_camera_params->flux = (int)sobelMetric;
+//         printf("(*) Sobel metric in image for focus %d is %li or %li.\n",
+//             all_camera_params->focus_position,
+//             sobelMetric, (int)sobelMetric);
+//         fprintf(af_file, "%3li\t%5d\n", sobelMetric,
+//                 all_camera_params->focus_position);
+//         fflush(af_file);
 
-        send_data = 1;
-        // if clients are listening and we want to guarantee data is sent to
-        // them before continuing with auto-focusing, wait until data_sent
-        // confirmation. If there are no clients, no need to slow down auto-
-        // focusing
-        if (num_clients > 0) {
-            while (!telemetry_sent) {
-                if (verbose) {
-                    printf("> Waiting for data to send to client...\n");
-                }
+//         send_data = 1;
+//         // if clients are listening and we want to guarantee data is sent to
+//         // them before continuing with auto-focusing, wait until data_sent
+//         // confirmation. If there are no clients, no need to slow down auto-
+//         // focusing
+//         if (num_clients > 0) {
+//             while (!telemetry_sent) {
+//                 if (verbose) {
+//                     printf("> Waiting for data to send to client...\n");
+//                 }
 
-                usleep(1000);
-            }
-        }
-        send_data = 0;
+//                 usleep(1000);
+//             }
+//         }
+//         send_data = 0;
 
-        // Move to next position
-        // if (all_camera_params->focus_position >= all_camera_params->end_focus_pos) {
-        //     all_camera_params->focus_step *= -1;
-        // } // two-way AF
-        // int focusStep = min(
-        //     all_camera_params->focus_step,
-        //     all_camera_params->end_focus_pos -
-        //     all_camera_params->focus_position);
-        int focusStep = all_camera_params->focus_step * dir;
-        sprintf(focusStrCmd, "mf %i\r", focusStep);
-        if (!cancelling_auto_focus) {
-            shiftFocus(focusStrCmd);
-        }
-        numFocusPos++;
-        hasGoneForward = 1;
-    }
+//         // Move to next position
+//         // if (all_camera_params->focus_position >= all_camera_params->end_focus_pos) {
+//         //     all_camera_params->focus_step *= -1;
+//         // } // two-way AF
+//         // int focusStep = min(
+//         //     all_camera_params->focus_step,
+//         //     all_camera_params->end_focus_pos -
+//         //     all_camera_params->focus_position);
+//         int focusStep = all_camera_params->focus_step * dir;
+//         sprintf(focusStrCmd, "mf %i\r", focusStep);
+//         if (!cancelling_auto_focus) {
+//             shiftFocus(focusStrCmd);
+//         }
+//         numFocusPos++;
+//         hasGoneForward = 1;
+//     }
 
-    // Necessary to avoid going into legacy autofocus mode if we drop out
-    // due to too many AF attempts.
-    all_camera_params->focus_mode = 0;
+//     // Necessary to avoid going into legacy autofocus mode if we drop out
+//     // due to too many AF attempts.
+//     all_camera_params->focus_mode = 0;
 
-    if (verbose) {
-        printf("Autofocus concluded with %d tries remaining.\n", remainingFocusPos);
-    }
+//     if (verbose) {
+//         printf("Autofocus concluded with %d tries remaining.\n", remainingFocusPos);
+//     }
 
-    // Move to optimal focus pos
-    // Do bounds checking on resultant pos
-    if (bestFocusPos > all_camera_params->max_focus_pos) {
-        printf("Auto focus is greater than max possible focus, "
-                "so just use that.\n");
-        bestFocusPos = all_camera_params->max_focus_pos;
-    // this outcome is highly unlikely but just in case
-    } else if (bestFocusPos < all_camera_params->min_focus_pos) {
-        printf("Auto focus is less than min possible focus, "
-                "so just use that.\n");
-        bestFocusPos = all_camera_params->min_focus_pos;
-    }
-    // Due to backlash, return to the optimal focus position via the direction
-    // we measured it: move to beginning
-    if (beginAutoFocus() < 1) {
-        printf("Error moving back to beginning of auto-focusing range. Skipping to taking "
-                "observing images...\n");
+//     // Move to optimal focus pos
+//     // Do bounds checking on resultant pos
+//     if (bestFocusPos > all_camera_params->max_focus_pos) {
+//         printf("Auto focus is greater than max possible focus, "
+//                 "so just use that.\n");
+//         bestFocusPos = all_camera_params->max_focus_pos;
+//     // this outcome is highly unlikely but just in case
+//     } else if (bestFocusPos < all_camera_params->min_focus_pos) {
+//         printf("Auto focus is less than min possible focus, "
+//                 "so just use that.\n");
+//         bestFocusPos = all_camera_params->min_focus_pos;
+//     }
+//     // Due to backlash, return to the optimal focus position via the direction
+//     // we measured it: move to beginning
+//     if (beginAutoFocus() < 1) {
+//         printf("Error moving back to beginning of auto-focusing range. Skipping to taking "
+//                 "observing images...\n");
 
-        // return to default focus position
-        if (defaultFocusPosition() < 1) {
-            printf("Error moving to default focus position.\n");
-            closeCamera();
-            return -1;
-        }
+//         // return to default focus position
+//         if (defaultFocusPosition() < 1) {
+//             printf("Error moving to default focus position.\n");
+//             closeCamera();
+//             return -1;
+//         }
 
-        // abort auto-focusing process
-        all_camera_params->focus_mode = 0;
-    }
-    // and THEN move to the optimal pos.
-    sprintf(focusStrCmd, "mf %i\r", 
-        bestFocusPos - all_camera_params->focus_position);
-    shiftFocus(focusStrCmd);
+//         // abort auto-focusing process
+//         all_camera_params->focus_mode = 0;
+//     }
+//     // and THEN move to the optimal pos.
+//     sprintf(focusStrCmd, "mf %i\r", 
+//         bestFocusPos - all_camera_params->focus_position);
+//     shiftFocus(focusStrCmd);
 
-    // Clean up
-    fclose(af_file);
-    af_file = NULL;
+//     // Clean up
+//     fclose(af_file);
+//     af_file = NULL;
 
-    // turn dynamic hot pixels back to whatever user had specified
-    if (verbose) {
-        printf("> Auto-focusing finished, so restoring dynamic hot "
-                "pixels to previous value...\n");
-    }
+//     // turn dynamic hot pixels back to whatever user had specified
+//     if (verbose) {
+//         printf("> Auto-focusing finished, so restoring dynamic hot "
+//                 "pixels to previous value...\n");
+//     }
 
-    all_blob_params.dynamic_hot_pixels = prev_dynamic_hp;
-    if (verbose) {
-        printf("Now all_blob_params.dynamic_hot_pixels = %d\n", 
-                all_blob_params.dynamic_hot_pixels);
-    }
-    return 0;
-}
+//     all_blob_params.dynamic_hot_pixels = prev_dynamic_hp;
+//     if (verbose) {
+//         printf("Now all_blob_params.dynamic_hot_pixels = %d\n", 
+//                 all_blob_params.dynamic_hot_pixels);
+//     }
+//     return 0;
+// }
 
 
 /* Function to take observing images and solve for pointing using Astrometry.
@@ -3445,13 +3446,13 @@ int doCameraAndAstrometry(void)
 
     // if we are at the start of auto-focusing (either when camera first runs or 
     // user re-enters auto-focusing mode)
-    #ifdef AF_ALGORITHM_NEW
-    // Hijack AF with new alg, which should set
-    // all_camera_params.focus_mode = 0 when done to bypass old AF
-    if (all_camera_params.begin_auto_focus && all_camera_params.focus_mode) {
-        doContrastDetectAutoFocus(&all_camera_params, tm_info, output_buffer);
-    }
-    #endif
+    // #ifdef AF_ALGORITHM_NEW
+    // // Hijack AF with new alg, which should set
+    // // all_camera_params.focus_mode = 0 when done to bypass old AF
+    // if (all_camera_params.begin_auto_focus && all_camera_params.focus_mode) {
+    //     doContrastDetectAutoFocus(&all_camera_params, tm_info, output_buffer);
+    // }
+    // #endif
     if (all_camera_params.begin_auto_focus && all_camera_params.focus_mode) {
         num_focus_pos = 0;
         send_data = 0;
