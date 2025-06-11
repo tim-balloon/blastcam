@@ -414,7 +414,7 @@ int setMinTriggerDivider(void) {
 
 
 /**
- * @brief Get the exposure time in milliseconds.
+ * @brief Get the analog gain factor.
  * 
  * @param[out] pAnalogGain pointer to output actual analog gain factor
  * @return int -1 if failed, 0 otherwise
@@ -668,7 +668,7 @@ int getFps(double* pCurrentFps)
 
 /**
  * @brief Set the framerate, although it doesn't apply in software trigger mode,
- * only in freerun mode
+ * only in freerun mode. Side effect: updates metadata struct
  * 
  * @param frameRateFps
  * @return int -1 if failed, 0 otherwise
@@ -728,6 +728,12 @@ int getPixelClock(double* pCurrentPixelClockMHz)
 }
 
 
+/**
+ * @brief Sets the Pixel Clock to the minimum available value.
+ * @details For the U3-31N0CP-M-GL, the only option is 216 MHz.
+ * 
+ * @return int -1 if failed, 0 otherwise
+ */
 int setMinPixelClock(void)
 {
     int ret = 0;
@@ -879,8 +885,9 @@ int getExposureTime(double* pExposureTimeMs)
 
 
 /**
- * @brief Set the exposure time in milliseconds. Side effect: updates metadata
- * struct
+ * @brief Set the exposure time in milliseconds. If the request value is not
+ * available, the closest available value is chosen. Side effect: updates
+ * metadata struct.
  * 
  * @param exposureTimeMs requested exposure time (ms)
  * @return int -1 if failed, 0 otherwise
@@ -3248,8 +3255,8 @@ int doCameraAndAstrometry(void)
         return -1;
     }
     #else
-    char dummyFileName[] = "/home/starcam/Desktop/TIMSC/BMPs/image.png";
-    if (imageTransfer(unpacked_image, dummyFileName) < 0) {
+    char tmpFileName[] = "/home/starcam/Desktop/TIMSC/BMPs/image.png";
+    if (imageTransfer(unpacked_image, tmpFileName) < 0) {
         fprintf(stderr, "Could not complete image transfer: %s.\n", 
            strerror(errno));
         return -1;
@@ -3559,7 +3566,7 @@ int doCameraAndAstrometry(void)
     // The frame was saved to disk at transfer time, when the frame handle was
     // available, with a generic name. Now that we have the final filename,
     // rename the generic saved file on disk.
-    if (rename(dummyFileName, filename)) {
+    if (rename(tmpFileName, filename)) {
         fprintf(stderr, "Unable to rename captured image file to %s: %s.\n",
             filename, strerror(errno));
     }
