@@ -61,9 +61,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <termios.h>
-#include <ueye.h>
 #include <math.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "lens_adapter.h"
 #include "camera.h"
@@ -95,7 +95,6 @@ char * birger_output, * buffer;
 int file_descriptor, default_focus;
 // global variables for solution to quadratic regression for auto-focusing
 double a, b, c;
-IMAGE_FILE_PARAMS ImageFileParams;
 
 /* Helper function to print a 1D array.
 ** Input: The array to be printed.
@@ -227,8 +226,8 @@ int initLensAdapter(char * path) {
 
     // open file descriptor with given path
     if ((file_descriptor = open(path, O_RDWR | O_NOCTTY)) < 0) {
-        fprintf(stderr, "Error opening file descriptor to input path: %s.\n", 
-                strerror(errno));
+        fprintf(stderr, "Error opening file descriptor to input path %s: %s.\n", 
+                path, strerror(errno));
         return -1;
     }
 
@@ -317,6 +316,12 @@ int initLensAdapter(char * path) {
         printf("Failed to learn current focus range.\n");
         return -1;
     }
+
+    // OK to usleep here, because we DO expect this move to take an appreciable
+    // amount of time, and we do this one time on init.
+    usleep(1000000);
+
+    // After learning focus range, try to move to infinity.
     if (runCommand("mi\r", file_descriptor, birger_output) == -1) {
         printf("Failed to move focus position to infinity.\n");
         return -1;
@@ -410,6 +415,12 @@ int beginAutoFocus() {
 */
 int defaultFocusPosition() {
     char focus_str_cmd[10];
+
+    // Always start by checking current focuser pos, to get correct delta.
+    if (runCommand("fp\r", file_descriptor, birger_output) == -1) {
+        printf("Failed to print the new focus position.\n");
+        return -1;
+    }
 
     printf("> Moving to default focus position..\n");
     printf("(*) Default focus = %d, all_camera_params.focus_position = %d, "
@@ -550,7 +561,6 @@ int calculateOptimalFocus(int num_focus, char * auto_focus_file) {
 int adjustCameraHardware() {
     char focus_str_cmd[15]; 
     char aper_str_cmd[15]; 
-    double current_exposure;
     int focus_shift;
     int ret = 1;
 
@@ -600,7 +610,7 @@ int adjustCameraHardware() {
     if (all_camera_params.max_aperture == 1) {
         // might as well change struct field here since we know what maximum 
         // aperture position is (don't have to get it with pa command)
-        all_camera_params.current_aperture = 28;
+        all_camera_params.current_aperture = 14; // Sigma 85mm f/1.4
 
         if (runCommand("mo\r", file_descriptor, birger_output) == -1) {
             printf("Setting the aperture to maximum fails.\n");
@@ -638,24 +648,7 @@ int adjustCameraHardware() {
         // change boolean to 0 so exposure isn't adjusted again until user sends
         //  another command
         all_camera_params.change_exposure_bool = 0;
-
-        // run uEye function to update camera exposure
-        if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_SET_EXPOSURE, 
-                        (void *) &all_camera_params.exposure_time, 
-                        sizeof(double)) != IS_SUCCESS) {
-            printf("Adjusting exposure to user command unsuccessful.\n");
-            ret = -1;
-        }
-
-        // check with current_exposure that exposure has been adjusted to 
-        // desired value
-        if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_GET_EXPOSURE, 
-                        &current_exposure, sizeof(double)) != IS_SUCCESS) {
-            printf("Could not check current exposure value.\n");
-            ret = -1;
-        } else {
-            printf("Exposure is now %f msec.\n", current_exposure);
-        }
+        ret = setExposureTime(all_camera_params.exposure_time);
     }
 
     return ret;
