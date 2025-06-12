@@ -881,7 +881,7 @@ int getExposureTime(double* pExposureTimeMs)
                 printf("getExposureTime: Actual exposure time is %f us\n",
                     actualExposureTimeUs);
             }
-            *pExposureTimeMs = actualExposureTimeUs * 1000.0;
+            *pExposureTimeMs = actualExposureTimeUs / 1000.0;
         }
     } else {
         fprintf(stderr, "getExposureTime: Failed to get actual exposure "
@@ -2349,6 +2349,9 @@ int imageTransfer(uint16_t* pUnpackedImage)
     strftime(FITSfilename, sizeof(FITSfilename),
         "/home/starcam/Desktop/TIMSC/BMPs/"
         "saved_image_%Y-%m-%d_%H:%M:%S.fits.gz", tm_info);
+
+    snprintf(default_metadata.filename, sizeof(default_metadata.filename),
+        "%s", FITSfilename);
 
     // Write the FITS File
     int FITSstatus = writeImage(FITSfilename, pUnpackedImage, CAMERA_WIDTH,
