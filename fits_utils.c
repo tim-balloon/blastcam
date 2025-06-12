@@ -206,6 +206,14 @@ int writeImage(char* fileName, uint16_t* imageMem, uint16_t imageWidth,
         fits_report_error(stderr, status);
         return status;
     }
+    // compute and write the checksum
+    // to check the checksum, do `fitscheck <filename> -i` to ignore the
+    // checksum missing in HDU #0 and check the compressed extension checksum in
+    // HDU # 1
+    if (fits_write_chksum(fptr_comp, &status)) {
+        fits_report_error(stderr, status);
+        return status;
+    }
     if (fits_close_file(fptr_comp, &status)) {
         fits_report_error(stderr, status);
         return status;

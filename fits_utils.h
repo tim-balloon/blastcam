@@ -27,8 +27,8 @@ struct fits_metadata_t {
     char telescop[30]; // TELESCOP: lens name
     char observat[10]; // OBSERVAT: observatory name
     char observer[10]; // OBSERVER: observer name
-    char filename[200]; // FILENAME: basename + ext on disk
-    char date[200]; // DATE: time of file creation (UTC) to nearest second
+    char filename[256]; // FILENAME: basename + ext on disk
+    char date[256]; // DATE: time of file creation (UTC) to nearest second
     uint64_t utcsec; // UTC-SEC: time of observation start, whole seconds portion since UNIX epoch
     uint64_t utcusec; // UTC-USEC: time of observation start, microseconds portion since UNIX epoch
     char filter[20]; // FILTER: filter name
