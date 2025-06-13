@@ -2,32 +2,20 @@
 
 
 /**
- * @brief Numerical recipes jumpscare! Section 14.1, first moment of an array
- * @details "Given an array of data[1..n], this routine returns its mean ave,
- * average deviation adev, standard deviation sdev, variance var, skewness
- * skew, and kurtosis curt. Abridged version of Sec. 14.1 for mean value only.
+ * @brief first moment of an array
  * @param data pointer to array of length n
- * @param length of data array and denominator in mean
- * @returns The truncated floating point mean, bounded by [INT32_MIN, INT32_MAX]
+ * @param n length of data array and denominator in mean
+ * @returns The truncated floating point mean
  */
-int32_t average(uint32_t* data, uint32_t n) {
-    float summed;
-    float average_float;
+uint16_t average(uint16_t* data, uint32_t n) {
+    float summed = 0.0;
     if (n < 1U) {
         return 0U;
     }
-    summed = 0.0;
     for (uint32_t j = 1; j <= n;j ++ ) {
         summed += data[j];
     }
-    average_float = truncf(summed / n);
-    if (average_float >= INT32_MAX) {
-        return INT32_MAX;
-    } else if (average_float <= INT32_MIN) {
-        return INT32_MIN;
-    } else {
-        return (int32_t)average_float;
-    }
+    return (uint16_t)truncf(summed / n);
 }
 
 
