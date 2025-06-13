@@ -10,7 +10,7 @@ void getNeighborhood(
     uint32_t pixelIndex,
     uint16_t imageWidth,
     uint32_t imageNumPix,
-    int32_t* neighborhood);
+    uint16_t* neighborhood);
 float convolve(uint16_t* array, int16_t* kernel, uint8_t kernelSize);
 void doConvolution(
     uint16_t* imageBuffer,

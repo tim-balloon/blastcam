@@ -88,6 +88,32 @@ float convolve(uint16_t* array, int16_t* kernel, uint8_t kernelSize)
 
 
 /**
+ * @brief The innermost part of the convolution algorithm, add-and-multiply
+ * pixels by kernel elements. Optimized for convolving 2 3x3 arrays
+ * 
+ * @param[in] array the input array to be considered; intended to be the output of
+ * `getNeighborhood`
+ * @param kernel the convolution kernel. Don't pass arrays of other types in
+ * here, you heathen.
+ * @return the result of the convolution
+ */
+float convolve9(uint16_t* array, int16_t* kernel)
+{
+    return (
+        (float)array[0] * (float)kernel[8] +
+        (float)array[1] * (float)kernel[7] +
+        (float)array[2] * (float)kernel[6] +
+        (float)array[3] * (float)kernel[5] +
+        (float)array[4] * (float)kernel[4] +
+        (float)array[5] * (float)kernel[3] +
+        (float)array[6] * (float)kernel[2] +
+        (float)array[7] * (float)kernel[1] +
+        (float)array[8] * (float)kernel[0]
+    );
+}
+
+
+/**
  * @brief Implements a limited, 3x3 convolution over the image.
  * 
  * @details Proceeds over the contiguous image buffer pixel-by-pixel,
@@ -120,6 +146,6 @@ void doConvolution(
     uint16_t neighborhood[9] = {0};
     for (uint32_t i = 0; i < imageNumPix; i++) {
         getNeighborhood(imageBuffer, imageMean, i, imageWidth, imageNumPix, neighborhood);
-        imageResult[i] = convolve(neighborhood, kernel, kernelSize) * (float)(mask[i]);
+        imageResult[i] = convolve9(neighborhood, kernel) * (float)(mask[i]);
     }
 }
