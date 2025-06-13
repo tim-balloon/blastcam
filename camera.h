@@ -64,83 +64,15 @@ struct blob_params {
 };
 #pragma pack(pop)
 
-
-// There is no equivalent of iDS Software Suite sensorInfo, but it's useful for 
-// collecting info from multiple other structs, so re-implement some parts here.
-// A little preview: eventually sensor/capture data will be saved in headers of
-// FITS files.
-struct fits_metadata_t {
-
-    // Capture data
-
-    char origin[10]; // ORIGIN: program used to generate file
-    char instrume[10]; // INSTRUME: instrument name
-    char telescop[30]; // TELESCOP: lens name
-    char observat[10]; // OBSERVAT: observatory name
-    char observer[10]; // OBSERVER: observer name
-    char filename[200]; // FILENAME: basename + ext on disk
-    char date[200]; // DATE: time of file creation (UTC) to nearest second
-    uint64_t utcsec; // UTC-OBS-SEC: time of observation start, whole seconds portion since UNIX epoch
-    uint64_t utcusec; // UTC-OBS-USEC: time of observation start, microseconds portion since UNIX epoch
-    char filter[20]; // FILTER: filter name
-    float ccdtemp; // CCDTEMP: camera temp (C)
-    int16_t focus; // FOCUS: focus position (encoder units)
-    int16_t aperture; // APERTURE: aperture position (10x fstop)
-    float exptime; // EXPTIME: total exposure time (s)
-    char bunit[4]; // BUNIT: physical unit of array values (ADU)
-
-    // Compression settings, not all are used for integer images
-    // https://heasarc.gsfc.nasa.gov/docs/software/fitsio/c/c_user/node41.html
-
-    char fzalgor[12]; // FZALGOR  - 'RICE_1' , 'GZIP_1', 'GZIP_2', 'HCOMPRESS_1', 'PLIO_1', 'NONE'
-    char fztile[4]; // FZTILE   - 'ROW', 'WHOLE', or '(n,m)'
-
-    // Sensor settings
-
-    char detector[64]; // DETECTOR: sensor name
-    uint64_t sensorid; // SENSORID: camera unique numerical identifier
-    uint8_t bitdepth; // BITDEPTH: requested bit depth of camera, not equivalent to BITPIX
-    float pixscal1; // PIXSCAL1: plate scale, axis 1 (arcsec/px)
-    float pixscal2; // PIXSCAL2: plate scale, axis 2 (arcsec/px)
-    float pixsize1; // PIXSIZE1: pixel pitch, axis 1 (micron)
-    float pixsize2; // PIXSIZE2: pixel pitch, axis 2 (micron)
-    float darkcur; // DARKCUR: avg dark current (e-/px/s)
-    float rdnoise1; // RDNOISE1: read noise (e-)
-    uint8_t ccdbin1; // CCDBIN1: x-axis binning factor
-    uint8_t ccdbin2; // CCDBIN2: y-axis binning factor
-    uint8_t pixelclk; // PIXELCLK: pixel clock (MHz)
-    float framerte; // FRAMERTE: framerate (Hz)
-    float gainfact; // GAINFACT: iDS gain factor setting (e.g. 2.0x)
-    // GAIN1: sensor gain, e-/DN...depends on GAINFACT, not known a-priori unless calibrated
-    float trigdlay; // TRIGDLAY: trigger delay (ms)
-    uint16_t bloffset; // BLOFFSET: black level offset setting, arb units
-    int16_t autogain; // AUTOGAIN: automatic gain control on (1) off (0)
-    int16_t autoexp; // AUTOEXP: automatic exposure control on (1) off (0)
-    int16_t autoblk; // AUTOBLK: automatic black level offset on (1) off (0)
-
-    // TODO(evanmayer): add more WCS info fields?
-    // Pointing data (to be added on plate solve?)
-
-    // SITEELEV: altitude, m
-    // SITELAT: latitude, (DD:MM:SS.S N)
-    // SITELAT: latitude, (DD:MM:SS.S W)
-    // AIRMASS:
-    // AZIMUTH:
-    // ELEVAT:
-    // RA:
-    // DEC:
-    // ROTANGLE: image rotation angle
-    // EQUINOX: (epoch of RA,DEC)
-};
-
-
 extern struct blob_params all_blob_params;
 extern struct trigger_params all_trigger_params;
+extern struct camera_params all_camera_params;
 
 int setCameraParams();
 void setSaveImage();
 int loadCamera();
 int initCamera();
+// int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm* tm_info, char* output_buffer);
 int getNumberOfCameras(int* pNumCams);
 int setExposureTime(double exposureTimeMs);
 
@@ -151,9 +83,8 @@ int imageTransfer(uint16_t* pUnpackedImage);
 int saveImageToDisk(char* filename);
 #else
 int getFps(double* pCurrentFps);
-int imageTransfer(uint16_t* pUnpackedImage, char* filename);
+int imageTransfer(uint16_t* pUnpackedImage);
 int saveImageToDisk(char* filename, peak_frame_handle hFrame);
-int recordMetadata(void);
 #endif
 int doCameraAndAstrometry();
 void clean();

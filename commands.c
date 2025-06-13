@@ -377,7 +377,7 @@ void * processClient(void * for_client_thread) {
         telemetry_sent = 0;
 
         while (!send_data) {
-            usleep(100000);
+            usleep(1000);
         }
 
         // compile telemetry and transmit back to use
