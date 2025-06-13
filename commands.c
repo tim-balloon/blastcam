@@ -806,6 +806,11 @@ int main(int argc, char * argv[]) {
            num_clients);
         printf("+---------------------------------------------------------+\n");
 
+        // Inform the user of the processing state
+        if (verbose) {
+            printf("Current state: %d", solver_state);
+        }
+
         // store length of client that has connected (if any)
         client_addr_len = sizeof(client_addr);
         if (newsockfd == -1) {
