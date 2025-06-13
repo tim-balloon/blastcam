@@ -2342,13 +2342,13 @@ int imageTransfer(uint16_t* pUnpackedImage)
     }
     // Copy the creation date into the metadata struct
     strftime(default_metadata.date, sizeof(default_metadata.date),
-        "%Y-%m-%d_%H:%M:%S", tm_info);
+        "%Y-%m-%d_%H-%M-%S", tm_info);
 
     char FITSfilename[256] = "";
     // Create the output filename
     strftime(FITSfilename, sizeof(FITSfilename),
-        "/home/starcam/Desktop/TIMSC/BMPs/"
-        "saved_image_%Y-%m-%d_%H:%M:%S.fits.gz", tm_info);
+        "/home/starcam/Desktop/TIMSC/img/"
+        "saved_image_%Y-%m-%d_%H-%M-%S.fits.gz", tm_info);
 
     snprintf(default_metadata.filename, sizeof(default_metadata.filename),
         "%s", FITSfilename);
@@ -3071,7 +3071,7 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //     strftime(
 //         af_filename,
 //         sizeof(af_filename),
-//         "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H:%M:%S.txt",
+//         "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H-%M-%S.txt",
 //         tm_info
 //     );
 //     if (verbose) {
@@ -3519,7 +3519,7 @@ int doCameraAndAstrometry(void)
         strftime(
             af_filename,
             sizeof(af_filename),
-            "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H:%M:%S.txt",
+            "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H-%M-%S.txt",
             tm_info
         );
         if (verbose) {
@@ -3589,7 +3589,7 @@ int doCameraAndAstrometry(void)
     // TODO(evanmayer): implement an iDS peak image loader
     // testing pictures that have already been taken
     // if you uncomment this for testing, you may need to change the path.
-    // if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/BMPs/load_image.bmp", 
+    // if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/img/load_image.bmp", 
     //                      (char **) &memory) == 1) {
     //     if (verbose) {
     //         printf("Successfully loaded test picture.\n");
@@ -3700,8 +3700,8 @@ int doCameraAndAstrometry(void)
         printf("Brightest blob for photo %d at focus %d has value %d.\n", 
                af_photo, all_camera_params.focus_position, brightest_blob);
 
-        strftime(time_str, sizeof(time_str), "%Y-%m-%d_%H:%M:%S", tm_info);
-        sprintf(date, "/home/starcam/Desktop/TIMSC/BMPs/auto_focus_at_%d_"
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d_%H-%M-%S", tm_info);
+        sprintf(date, "/home/starcam/Desktop/TIMSC/img/auto_focus_at_%d_"
                       "brightest_blob_%d_at_x%d_y%d_%s.png", 
                 all_camera_params.focus_position, brightest_blob, 
                 brightest_blob_x, brightest_blob_y, time_str);
@@ -3828,8 +3828,8 @@ int doCameraAndAstrometry(void)
             printf(">> No longer auto-focusing!\n");
         }
 
-        strftime(date, sizeof(date), "/home/starcam/Desktop/TIMSC/BMPs/"
-                                     "saved_image_%Y-%m-%d_%H:%M:%S.png", 
+        strftime(date, sizeof(date), "/home/starcam/Desktop/TIMSC/img/"
+                                     "saved_image_%Y-%m-%d_%H-%M-%S.png", 
                                      tm_info);
         snprintf(filename, 256, "%s", date);
 
@@ -3897,9 +3897,9 @@ int doCameraAndAstrometry(void)
 
     // printf("Saving captured frame to \"%s\"\n", filename);
     // unlink whatever the latest saved image was linked to before
-    // unlink("/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
+    // unlink("/home/starcam/Desktop/TIMSC/imh/latest_saved_image.png");
     // sym link current date to latest image for live Kst updates
-    // symlink(date, "/home/starcam/Desktop/TIMSC/BMPs/latest_saved_image.png");
+    // symlink(date, "/home/starcam/Desktop/TIMSC/img/latest_saved_image.png");
 
     // make a table of blobs for Kst
     if (makeTable("makeTable.txt", star_mags, star_x, star_y, blob_count) != 1) {
