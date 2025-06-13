@@ -118,7 +118,7 @@ int prev_dynamic_hp;
 // For realtime contrast AF
 // Have to declare here or we'd run out of stack space and mysterious-looking SEGFAULT
 // int32_t imageBuffer[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
-// int32_t sobelResult[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
+// float sobelResult[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
 
 /* Blob parameters global structure (defined in camera.h) */
 struct blob_params all_blob_params = {
@@ -3036,7 +3036,7 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 
 //     // Initialize focuser and AF logging
 //     int bestFocusPos = all_camera_params->focus_position;
-//     int32_t bestFocusGrad = 0;
+//     double bestFocusGrad = 0;
 
 //     printf("Running contrast detection AF.\n");
 //     all_camera_params->begin_auto_focus = 0;
@@ -3167,6 +3167,7 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //         // pointer for transmitting to user should point to where image is in memory
 //         camera_raw = output_buffer;
 
+//         // TODO(evanmayer) use the already-transferred array here
 //         // Image unpacking/type conversion
 //         // 12-bit unpacking function goes here instead
 //         uint32_t imageNumPix = CAMERA_WIDTH * CAMERA_HEIGHT;
@@ -3181,7 +3182,7 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 
 //         // Used for edge cases in convolution and later for normalizing
 //         // the contrast metric
-//         int32_t imageAverage = average(imageBuffer, imageNumPix);
+//         uint16_t imageAverage = average(imageBuffer, imageNumPix);
 
 //         // Sobel filter for contrast detection
 //         // Usually, you want to judge sharpness based on the magnitude of
@@ -3192,9 +3193,9 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //             sobelKernelx, kernelSize, sobelResult);
 //         // Let the sharpness metric be the sum of squared gradients, as
 //         // estimated by the Sobel operator
-//         int64_t sobelMetric = 0;
+//         double sobelMetric = 0;
 //         for (uint32_t i = 0; i < imageNumPix; i++) {
-//             int32_t result = sobelResult[i];
+//             float result = sobelResult[i];
 //             sobelMetric += result * result;
 //         }
 
@@ -3212,14 +3213,13 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //         }
 
 //         // Save off data in AF logfile
-//         // TODO: FIXME: flux is int, sobelMetric is int64_t...
+//         // flux is int, sobelMetric is double...
 //         // sobelMetric is gradient sharpness metric, not flux,
 //         // but same diff...har har
-//         all_camera_params->flux = (int)sobelMetric;
-//         printf("(*) Sobel metric in image for focus %d is %li or %li.\n",
-//             all_camera_params->focus_position,
-//             sobelMetric, (int)sobelMetric);
-//         fprintf(af_file, "%3li\t%5d\n", sobelMetric,
+//         all_camera_params->flux = (int)(max(min(sobelMetric, INT_MAX), INT_MIN));
+//         printf("(*) Sobel metric in image for focus %d is %lf.\n",
+//             all_camera_params->focus_position, sobelMetric);
+//         fprintf(af_file, "%.6lf\t%5d\n", sobelMetric,
 //                 all_camera_params->focus_position);
 //         fflush(af_file);
 

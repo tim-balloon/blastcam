@@ -7,7 +7,8 @@
  * @param n length of data array and denominator in mean
  * @returns The truncated floating point mean
  */
-uint16_t average(uint16_t* data, uint32_t n) {
+uint16_t average(uint16_t* data, uint32_t n)
+{
     float summed = 0.0;
     if (n < 1U) {
         return 0U;
@@ -35,12 +36,13 @@ uint16_t average(uint16_t* data, uint32_t n) {
  * `pixelIndex`
  */
 void getNeighborhood(
-    int32_t* imageBuffer,
-    int32_t imageMean,
+    uint16_t* imageBuffer,
+    uint16_t imageMean,
     uint32_t pixelIndex,
     uint16_t imageWidth,
     uint32_t imageNumPix,
-    int32_t* neighborhood) {
+    uint16_t* neighborhood)
+{
     bool isLeft = (0 == pixelIndex % imageWidth);
     bool isRight = (0 == ((pixelIndex + 1) % imageWidth));
     bool isBottom = ((int64_t)pixelIndex - imageWidth) < 0;
@@ -72,13 +74,14 @@ void getNeighborhood(
  * @param kernel the convolution kernel. Don't pass arrays of other types in
  * here, you heathen.
  * @param kernelSize the length of the flattened, square kernel
- * @return int32_t the result of the convolution
+ * @return the result of the convolution
  */
-int32_t convolve(int32_t* array, int16_t* kernel, uint8_t kernelSize) {
-    int32_t sum = 0;
+float convolve(uint16_t* array, int16_t* kernel, uint8_t kernelSize)
+{
+    float sum = 0;
     // Assumption: array and kernel are same size.
     for (uint8_t i = 0; i < kernelSize; i++) {
-        sum += array[i] * (int32_t)kernel[kernelSize - i - 1];
+        sum += (float)array[i] * (float)kernel[kernelSize - i - 1];
     }
     return sum;
 }
@@ -104,18 +107,19 @@ int32_t convolve(int32_t* array, int16_t* kernel, uint8_t kernelSize) {
  * @param[out] imageResult 
  */
 void doConvolution(
-    int32_t* imageBuffer,
-    int32_t imageMean,
+    uint16_t* imageBuffer,
+    uint16_t imageMean,
     uint16_t imageWidth,
     uint32_t imageNumPix,
     unsigned char* mask,
     int16_t* kernel,
     uint8_t kernelSize,
-    int32_t* imageResult) {
+    float* imageResult)
+{
     // statically allocate this array for (re)use throughout the run
-    int32_t neighborhood[9] = {0};
+    uint16_t neighborhood[9] = {0};
     for (uint32_t i = 0; i < imageNumPix; i++) {
         getNeighborhood(imageBuffer, imageMean, i, imageWidth, imageNumPix, neighborhood);
-        imageResult[i] = convolve(neighborhood, kernel, kernelSize) * (int32_t)(mask[i]);
+        imageResult[i] = convolve(neighborhood, kernel, kernelSize) * (float)(mask[i]);
     }
 }
