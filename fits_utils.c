@@ -127,7 +127,6 @@ int writeMetadata(fitsfile* fptr, struct fits_metadata_t* pMetadata)
 }
 
 
-// TODO(evanmayer): implement checksum writing
 /**
  * @brief write a 16-bit unsigned int FITS primary array image using the given
  * memory
@@ -228,85 +227,85 @@ int writeImage(char* fileName, uint16_t* imageMem, uint16_t imageWidth,
 }
 
 
-/**
- * @brief read a FITS image into the given memory
- * @details for the purposes of this code, get just the image data, not any
- * header data.
- * 
- */
-int readImage(char* fileName, uint16_t* imageMem, uint16_t imageWidth,
-    uint16_t imageHeight)
-{
-    fitsfile *fptr; // pointer to the FITS file, defined in fitsio.h
-    int status;
-    int nfound;
-    int anynull;
-    long naxes[2];
-    long fpixel;
-    long nbuffer;
-    long npixels;
-    long ii;
+// /**
+//  * @brief read a FITS image into the given memory
+//  * @details for the purposes of this code, get just the image data, not any
+//  * header data.
+//  * 
+//  */
+// int readImage(char* fileName, uint16_t* imageMem, uint16_t imageWidth,
+//     uint16_t imageHeight)
+// {
+//     fitsfile *fptr; // pointer to the FITS file, defined in fitsio.h
+//     int status;
+//     int nfound;
+//     int anynull;
+//     long naxes[2];
+//     long fpixel;
+//     long nbuffer;
+//     long npixels;
+//     long ii;
 
-    float datamin;
-    float datamax;
-    float nullval;
-    // TODO(evanmayer): change buffer type to uint16_t
-    float buffer[FITS_BUFF_SIZE];
+//     float datamin;
+//     float datamax;
+//     float nullval;
+//     // TODO(evanmayer): change buffer type to uint16_t
+//     float buffer[FITS_BUFF_SIZE];
 
-    status = 0;
+//     status = 0;
 
-    if (fits_open_file(&fptr, fileName, READONLY, &status)) {
-        fits_report_error(stderr, status);
-        return status;
-    }
+//     if (fits_open_file(&fptr, fileName, READONLY, &status)) {
+//         fits_report_error(stderr, status);
+//         return status;
+//     }
 
-    // read the NAXIS1 and NAXIS2 keyword to get image size
-    if (fits_read_keys_lng(fptr, "NAXIS", 1, 2, naxes, &nfound, &status)) {
-        fits_report_error(stderr, status);
-        return status;
-    }
+//     // read the NAXIS1 and NAXIS2 keyword to get image size
+//     if (fits_read_keys_lng(fptr, "NAXIS", 1, 2, naxes, &nfound, &status)) {
+//         fits_report_error(stderr, status);
+//         return status;
+//     }
 
-    npixels  = naxes[0] * naxes[1]; // number of pixels in the image
-    fpixel   = 1;
-    nullval  = 0; // don't check for null values in the image
-    datamin  = 1.0E30f;
-    datamax  = -1.0E30f;
+//     npixels  = naxes[0] * naxes[1]; // number of pixels in the image
+//     fpixel   = 1;
+//     nullval  = 0; // don't check for null values in the image
+//     datamin  = 1.0E30f;
+//     datamax  = -1.0E30f;
 
-    while (npixels > 0) {
-        nbuffer = npixels;
-        // read as many pixels as will fit in buffer
-        if (npixels > FITS_BUFF_SIZE) {
-            nbuffer = FITS_BUFF_SIZE;
-        }
+//     while (npixels > 0) {
+//         nbuffer = npixels;
+//         // read as many pixels as will fit in buffer
+//         if (npixels > FITS_BUFF_SIZE) {
+//             nbuffer = FITS_BUFF_SIZE;
+//         }
 
-        /* Note that even though the FITS images contains unsigned integer */
-        /* pixel values (or more accurately, signed integer pixels with    */
-        /* a bias of 32768),  this routine is reading the values into a    */
-        /* float array.   Cfitsio automatically performs the datatype      */
-        /* conversion in cases like this.                                  */
+//         /* Note that even though the FITS images contains unsigned integer */
+//         /* pixel values (or more accurately, signed integer pixels with    */
+//         /* a bias of 32768),  this routine is reading the values into a    */
+//         /* float array.   Cfitsio automatically performs the datatype      */
+//         /* conversion in cases like this.                                  */
 
-        if (fits_read_img(fptr, TFLOAT, fpixel, nbuffer, &nullval,
-            buffer, &anynull, &status)) {
-            fits_report_error(stderr, status);
-            return status;
-        }
-        // TODO(evanmayer): replace processing logic with reading
-        for (ii = 0; ii < nbuffer; ii++) {
-            if (buffer[ii] < datamin) {
-                datamin = buffer[ii];
-            }
-            if (buffer[ii] > datamax) {
-                datamax = buffer[ii];
-            }
-        }
-        npixels -= nbuffer; // increment remaining number of pixels
-        fpixel += nbuffer; // next pixel to be read in image
-    }
+//         if (fits_read_img(fptr, TFLOAT, fpixel, nbuffer, &nullval,
+//             buffer, &anynull, &status)) {
+//             fits_report_error(stderr, status);
+//             return status;
+//         }
+//         // TODO(evanmayer): replace processing logic with reading
+//         for (ii = 0; ii < nbuffer; ii++) {
+//             if (buffer[ii] < datamin) {
+//                 datamin = buffer[ii];
+//             }
+//             if (buffer[ii] > datamax) {
+//                 datamax = buffer[ii];
+//             }
+//         }
+//         npixels -= nbuffer; // increment remaining number of pixels
+//         fpixel += nbuffer; // next pixel to be read in image
+//     }
 
-    if (fits_close_file(fptr, &status)) {
-        fits_report_error(stderr, status);
-        return status;
-    }
+//     if (fits_close_file(fptr, &status)) {
+//         fits_report_error(stderr, status);
+//         return status;
+//     }
 
-    return status;
-}
+//     return status;
+// }
