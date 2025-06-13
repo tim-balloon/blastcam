@@ -144,8 +144,6 @@ int writeImage(char* fileName, uint16_t* imageMem, uint16_t imageWidth,
     char tmpFileName[9] = "tmp.fits";
     fitsfile *fptr_comp; // compressed (final) image
     int status;
-    int ii;
-    int jj;
     long fpixel;
     long nelements;
 
