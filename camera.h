@@ -48,7 +48,7 @@ struct trigger_params
     int trigger_timeout_us; // time in µs to wait between checks for a trigger
 };
 
-enum solver_state_t
+enum solveState_t
 {
     UNINIT,
     INIT,
@@ -60,7 +60,7 @@ enum solver_state_t
     ASTROMETRY,
     NUM_STATES
 };
-extern enum solver_state_t solver_state;
+extern enum solveState_t solveState;
 
 
 /* Blob-finding parameters */

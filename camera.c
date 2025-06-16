@@ -141,7 +141,7 @@ struct trigger_params all_trigger_params = {
     .trigger_mode = 0, // default to 
 };
 
-enum solver_state_t solver_state = UNINIT;
+enum solveState_t solveState = UNINIT;
 
 
 /* Helper function to determine if a year is a leap year (2020 is a leap year).
@@ -2527,10 +2527,10 @@ void makeMask(uint16_t * ib, int i0, int j0, int i1, int j1, int x0, int y0,
 
         for (int i = 0; i < num_p; i++) {
             // set all static hot pixels to 0
-            if (verbose) {
-                printf("|\tCoordinates going into mask: [%4i, %4i]\t  |\n", 
-                       x_p[i], CAMERA_HEIGHT - y_p[i]);
-            }
+            // if (verbose) {
+            //     printf("|\tCoordinates going into mask: [%4i, %4i]\t  |\n", 
+            //            x_p[i], CAMERA_HEIGHT - y_p[i]);
+            // }
 
             int ind = CAMERA_WIDTH * y_p[i] + x_p[i];
             mask[ind] = 0;
@@ -2661,6 +2661,7 @@ int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x,
     
     b = all_blob_params.centroid_search_border;
 
+    solveState = HOTPIX_MASK;
     // if we want to make a new hot pixel mask
     if (all_blob_params.make_static_hp_mask) {
         if (verbose) {
@@ -2695,7 +2696,6 @@ int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x,
         fclose(f);
     }
 
-    solver_state = HOTPIX_MASK;
     makeMask(input_buffer, i0, j0, i1, j1, 0, 0, 0);
 
     double sx = 0, sx2 = 0;
@@ -2703,7 +2703,7 @@ int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x,
     double sx_raw = 0;                            
     int num_pix = 0;
 
-    solver_state = FILTERING;
+    solveState = FILTERING;
     // lowpass filter the image - reduce noise.
     boxcarFilterImage(input_buffer, i0, j0, i1, j1, all_blob_params.r_smooth, 
                       ic);
@@ -2829,7 +2829,7 @@ int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x,
     // stars? And are those extra few hundred stars going to improve
     // performance? No.
 
-    solver_state = BLOB_FIND;
+    solveState = BLOB_FIND;
 
     // find the blobs 
     double ic0;
@@ -3393,7 +3393,7 @@ int doCameraAndAstrometry(void)
     }
 
     if (first_time) {
-        solver_state = INIT;
+        solveState = INIT;
         output_buffer = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, sizeof(uint16_t));
         if (output_buffer == NULL) {
             fprintf(stderr, "Error allocating output buffer: %s.\n", 
@@ -3553,7 +3553,7 @@ int doCameraAndAstrometry(void)
                 "/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
     }
 
-    solver_state = IMAGE_CAP;
+    solveState = IMAGE_CAP;
     taking_image = 1;
     // Ian Lowe, 1/9/24, adding new logic to look for a trigger from a FC or sleep instead
     if (all_trigger_params.trigger_mode == 1) {
@@ -3685,7 +3685,7 @@ int doCameraAndAstrometry(void)
     // now have to distinguish between auto-focusing actions and solving
     // ECM N.B.: If AF_ALGORITHM_NEW defined, you'll never go in here
     if (all_camera_params.focus_mode && !all_camera_params.begin_auto_focus) {
-        solver_state = AUTOFOCUS;
+        solveState = AUTOFOCUS;
         int brightest_blob, max_flux, focus_step;
         int brightest_blob_x, brightest_blob_y = 0;
         char focus_str_cmd[10];
@@ -3856,7 +3856,7 @@ int doCameraAndAstrometry(void)
             printf("\n> Trying to solve astrometry...\n");
         }
 
-        solver_state = ASTROMETRY;
+        solveState = ASTROMETRY;
         if (lostInSpace(star_x, star_y, star_mags, blob_count, tm_info, 
                         datafile) != 1) {
             printf("\n(*) Could not solve Astrometry.\n");

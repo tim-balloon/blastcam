@@ -89,6 +89,18 @@ static const struct option long_options[] = {
     { NULL,        no_argument,       NULL,  0  },
 };
 
+// Helper for printing state machine states
+const char* solveStateStr[NUM_STATES] = {
+    "Uninitialized",
+    "Initializing",
+    "Image Capture",
+    "Hot Pixel Masking",
+    "Filtering",
+    "Blob Finding",
+    "Autofocus",
+    "Astrometry"
+};
+
 struct commands all_cmds = {0};
 struct telemetry all_data = {0};
 int num_clients = 0;
@@ -808,7 +820,9 @@ int main(int argc, char * argv[]) {
 
         // Inform the user of the processing state
         if (verbose) {
-            printf("Current state: %d", solver_state);
+            printf("+=========================================================+\n");
+            printf("| Current state: %s\n", solveStateStr[solveState]);
+            printf("+=========================================================+\n");
         }
 
         // store length of client that has connected (if any)
