@@ -25,19 +25,17 @@ uint16_t average(uint16_t* data, uint32_t n)
  * 
  * @details Supplied arrays are accessed in C row-major order. In row-major 
  * order, left/right adjacent pixels are adjacent in the array, while top/
- * bottom pixels are `imageWidth` indices apart. For edge cases, place 0s in
- * `neighborhood`, to zero out that term in convolution.
+ * bottom pixels are `imageWidth` indices apart. For edge cases, return the
+ * nearest valid neighbor.
  * @param[in] imageBuffer contiguous memory containing original pixel values
- * @param imageMean mean value of image, for proper handling of edges
  * @param pixelIndex raw row-major index into image memory
  * @param imageWidth number of columns in a single image row
  * @param imageNumPix number of columns x number of rows in image
  * @param[out] neighborhood 9-element array containing 3x3 block of pixels around
  * `pixelIndex`
  */
-void getNeighborhood(
+void getNeighborhoodNearest(
     uint16_t* imageBuffer,
-    uint16_t imageMean,
     uint32_t pixelIndex,
     uint16_t imageWidth,
     uint32_t imageNumPix,
@@ -48,42 +46,134 @@ void getNeighborhood(
     bool isBottom = ((int64_t)pixelIndex - imageWidth) < 0;
     bool isTop = (pixelIndex + imageWidth) >= imageNumPix;
 
-    // HACK: FIXME: sobelmetric returns to 0 when high?
-    imageMean = 0U;
+    // DOWN is more negative
+    // LEFT is more negative
+    //  --------------  //  --------------
+    // | 6  | 7  | 8  | // | TL | T  | TR |
+    // |----|----|----| // |----|----|----|
+    // | 3  | 4  | 5  | // | L  | C  | R  |
+    // |----|----|----| // |----|----|----|
+    // | 0  | 1  | 2  | // | BL | B  | BR |
+    //  --------------  //  --------------
+    uint32_t idxTL = pixelIndex + imageWidth - 1;
+    uint32_t idxT = pixelIndex + imageWidth;
+    uint32_t idxTR = pixelIndex + imageWidth + 1;
+    uint32_t idxL = pixelIndex - 1;
+    uint32_t idxC = pixelIndex;
+    uint32_t idxR = pixelIndex + 1;
+    uint32_t idxBL = pixelIndex - imageWidth - 1;
+    uint32_t idxB = pixelIndex - imageWidth;
+    uint32_t idxBR = pixelIndex - imageWidth + 1;
 
-    // If not blocked by image bound guards, return pixel value, else return image mean value
-    neighborhood[0] = (!isBottom && !isLeft)     ? imageBuffer[pixelIndex - imageWidth - 1] : imageMean;
-    neighborhood[1] = (!isBottom)                ? imageBuffer[pixelIndex - imageWidth]     : imageMean;
-    neighborhood[2] = (!isBottom && !isRight)    ? imageBuffer[pixelIndex - imageWidth + 1] : imageMean;
-    neighborhood[3] = (!isLeft)                  ? imageBuffer[pixelIndex - 1]              : imageMean;
-    // ought to be limited by caller's for loop, but belt & suspenders
-    neighborhood[4] = (pixelIndex < imageNumPix) ? imageBuffer[pixelIndex]                  : imageMean;
-    neighborhood[5] = (!isRight)                 ? imageBuffer[pixelIndex + 1]              : imageMean;
-    neighborhood[6] = (!isTop && !isLeft)        ? imageBuffer[pixelIndex + imageWidth - 1] : imageMean;
-    neighborhood[7] = (!isTop)                   ? imageBuffer[pixelIndex + imageWidth]     : imageMean;
-    neighborhood[8] = (!isTop && !isRight)       ? imageBuffer[pixelIndex + imageWidth + 1] : imageMean;
-}
-
-
-/**
- * @brief The innermost part of the convolution algorithm, add-and-multiply
- * pixels by kernel elements.
- * 
- * @param[in] array the input array to be considered; intended to be the output of
- * `getNeighborhood`
- * @param kernel the convolution kernel. Don't pass arrays of other types in
- * here, you heathen.
- * @param kernelSize the length of the flattened, square kernel
- * @return the result of the convolution
- */
-float convolve(uint16_t* array, int16_t* kernel, uint8_t kernelSize)
-{
-    float sum = 0;
-    // Assumption: array and kernel are same size.
-    for (uint8_t i = 0; i < kernelSize; i++) {
-        sum += (float)array[i] * (float)kernel[kernelSize - i - 1];
+    if (isBottom && isLeft) {
+        neighborhood[0] = imageBuffer[idxC];
+        neighborhood[1] = imageBuffer[idxC];
+        neighborhood[2] = imageBuffer[idxR];
+        neighborhood[3] = imageBuffer[idxC];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxR];
+        neighborhood[6] = imageBuffer[idxT];
+        neighborhood[7] = imageBuffer[idxT];
+        neighborhood[8] = imageBuffer[idxTR];
+        return;
     }
-    return sum;
+    if (isBottom && !isLeft && !isRight) {
+        neighborhood[0] = imageBuffer[idxL];
+        neighborhood[1] = imageBuffer[idxC];
+        neighborhood[2] = imageBuffer[idxR];
+        neighborhood[3] = imageBuffer[idxL];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxR];
+        neighborhood[6] = imageBuffer[idxTL];
+        neighborhood[7] = imageBuffer[idxT];
+        neighborhood[8] = imageBuffer[idxTR];
+        return;
+    }
+    if (isBottom && isRight) {
+        neighborhood[0] = imageBuffer[idxL];
+        neighborhood[1] = imageBuffer[idxC];
+        neighborhood[2] = imageBuffer[idxC];
+        neighborhood[3] = imageBuffer[idxL];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxC];
+        neighborhood[6] = imageBuffer[idxTL];
+        neighborhood[7] = imageBuffer[idxT];
+        neighborhood[8] = imageBuffer[idxT];
+        return;
+    }
+    if (isLeft && !isTop && !isBottom) {
+        neighborhood[0] = imageBuffer[idxB];
+        neighborhood[1] = imageBuffer[idxB];
+        neighborhood[2] = imageBuffer[idxBR];
+        neighborhood[3] = imageBuffer[idxC];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxR];
+        neighborhood[6] = imageBuffer[idxT];
+        neighborhood[7] = imageBuffer[idxT];
+        neighborhood[8] = imageBuffer[idxTR];
+        return;
+    }
+    if (!isLeft && !isBottom && !isRight && !isTop) {
+        // We're just normal men...we're just ordinary men...
+        neighborhood[0] = imageBuffer[idxBL];
+        neighborhood[1] = imageBuffer[idxB];
+        neighborhood[2] = imageBuffer[idxBR];
+        neighborhood[3] = imageBuffer[idxL];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxR];
+        neighborhood[6] = imageBuffer[idxTL];
+        neighborhood[7] = imageBuffer[idxT];
+        neighborhood[8] = imageBuffer[idxTR];
+        return;
+    }
+    if (isRight && !isTop && !isBottom) {
+        neighborhood[0] = imageBuffer[idxBL];
+        neighborhood[1] = imageBuffer[idxB];
+        neighborhood[2] = imageBuffer[idxB];
+        neighborhood[3] = imageBuffer[idxL];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxC];
+        neighborhood[6] = imageBuffer[idxTL];
+        neighborhood[7] = imageBuffer[idxT];
+        neighborhood[8] = imageBuffer[idxT];
+        return;
+    }
+    if (isTop && isLeft) {
+        neighborhood[0] = imageBuffer[idxB];
+        neighborhood[1] = imageBuffer[idxB];
+        neighborhood[2] = imageBuffer[idxBR];
+        neighborhood[3] = imageBuffer[idxC];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxR];
+        neighborhood[6] = imageBuffer[idxC];
+        neighborhood[7] = imageBuffer[idxC];
+        neighborhood[8] = imageBuffer[idxR];
+        return;
+    }
+    if (isTop && !isLeft && !isRight) {
+        neighborhood[0] = imageBuffer[idxBL];
+        neighborhood[1] = imageBuffer[idxB];
+        neighborhood[2] = imageBuffer[idxBR];
+        neighborhood[3] = imageBuffer[idxL];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxR];
+        neighborhood[6] = imageBuffer[idxL];
+        neighborhood[7] = imageBuffer[idxC];
+        neighborhood[8] = imageBuffer[idxR];
+        return;
+    }
+    if (isTop && isRight) {
+        neighborhood[0] = imageBuffer[idxBL];
+        neighborhood[1] = imageBuffer[idxB];
+        neighborhood[2] = imageBuffer[idxB];
+        neighborhood[3] = imageBuffer[idxL];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxC];
+        neighborhood[6] = imageBuffer[idxL];
+        neighborhood[7] = imageBuffer[idxC];
+        neighborhood[8] = imageBuffer[idxC];
+        return;
+    }
 }
 
 
@@ -145,7 +235,7 @@ void doConvolution(
     // statically allocate this array for (re)use throughout the run
     uint16_t neighborhood[9] = {0};
     for (uint32_t i = 0; i < imageNumPix; i++) {
-        getNeighborhood(imageBuffer, imageMean, i, imageWidth, imageNumPix, neighborhood);
+        getNeighborhoodNearest(imageBuffer, i, imageWidth, imageNumPix, neighborhood);
         imageResult[i] = convolve9(neighborhood, kernel) * (float)(mask[i]);
     }
 }
