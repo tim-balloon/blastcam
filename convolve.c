@@ -41,10 +41,14 @@ void getNeighborhoodNearest(
     uint32_t imageNumPix,
     uint16_t* neighborhood)
 {
+    // Clawing back a couple of instructions due to repeated ops
+    int64_t above = pixelIndex + imageWidth;
+    int64_t below = (int64_t)pixelIndex - imageWidth;
+
     bool isLeft = (0 == pixelIndex % imageWidth);
     bool isRight = (0 == ((pixelIndex + 1) % imageWidth));
-    bool isBottom = ((int64_t)pixelIndex - imageWidth) < 0;
-    bool isTop = (pixelIndex + imageWidth) >= imageNumPix;
+    bool isBottom = below < 0;
+    bool isTop = above >= imageNumPix;
 
     // DOWN is more negative
     // LEFT is more negative
@@ -55,28 +59,30 @@ void getNeighborhoodNearest(
     // |----|----|----| // |----|----|----|
     // | 0  | 1  | 2  | // | BL | B  | BR |
     //  --------------  //  --------------
-    uint32_t idxTL = pixelIndex + imageWidth - 1;
-    uint32_t idxT = pixelIndex + imageWidth;
-    uint32_t idxTR = pixelIndex + imageWidth + 1;
-    uint32_t idxL = pixelIndex - 1;
-    uint32_t idxC = pixelIndex;
-    uint32_t idxR = pixelIndex + 1;
-    uint32_t idxBL = pixelIndex - imageWidth - 1;
-    uint32_t idxB = pixelIndex - imageWidth;
-    uint32_t idxBR = pixelIndex - imageWidth + 1;
+    int64_t idxTL = above - 1;
+    int64_t idxT = above;
+    int64_t idxTR = above + 1;
+    int64_t idxL = pixelIndex - 1;
+    int64_t idxC = pixelIndex;
+    int64_t idxR = pixelIndex + 1;
+    int64_t idxBL = below - 1;
+    int64_t idxB = below;
+    int64_t idxBR = below + 1;
 
-    if (isBottom && isLeft) {
-        neighborhood[0] = imageBuffer[idxC];
-        neighborhood[1] = imageBuffer[idxC];
-        neighborhood[2] = imageBuffer[idxR];
-        neighborhood[3] = imageBuffer[idxC];
+    if (!isLeft && !isBottom && !isRight && !isTop) {
+        // We're just normal men...we're just ordinary men...
+        neighborhood[0] = imageBuffer[idxBL];
+        neighborhood[1] = imageBuffer[idxB];
+        neighborhood[2] = imageBuffer[idxBR];
+        neighborhood[3] = imageBuffer[idxL];
         neighborhood[4] = imageBuffer[idxC];
         neighborhood[5] = imageBuffer[idxR];
-        neighborhood[6] = imageBuffer[idxT];
+        neighborhood[6] = imageBuffer[idxTL];
         neighborhood[7] = imageBuffer[idxT];
         neighborhood[8] = imageBuffer[idxTR];
         return;
     }
+    // Less common cases: edge pixel
     if (isBottom && !isLeft && !isRight) {
         neighborhood[0] = imageBuffer[idxL];
         neighborhood[1] = imageBuffer[idxC];
@@ -89,18 +95,6 @@ void getNeighborhoodNearest(
         neighborhood[8] = imageBuffer[idxTR];
         return;
     }
-    if (isBottom && isRight) {
-        neighborhood[0] = imageBuffer[idxL];
-        neighborhood[1] = imageBuffer[idxC];
-        neighborhood[2] = imageBuffer[idxC];
-        neighborhood[3] = imageBuffer[idxL];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxC];
-        neighborhood[6] = imageBuffer[idxTL];
-        neighborhood[7] = imageBuffer[idxT];
-        neighborhood[8] = imageBuffer[idxT];
-        return;
-    }
     if (isLeft && !isTop && !isBottom) {
         neighborhood[0] = imageBuffer[idxB];
         neighborhood[1] = imageBuffer[idxB];
@@ -109,19 +103,6 @@ void getNeighborhoodNearest(
         neighborhood[4] = imageBuffer[idxC];
         neighborhood[5] = imageBuffer[idxR];
         neighborhood[6] = imageBuffer[idxT];
-        neighborhood[7] = imageBuffer[idxT];
-        neighborhood[8] = imageBuffer[idxTR];
-        return;
-    }
-    if (!isLeft && !isBottom && !isRight && !isTop) {
-        // We're just normal men...we're just ordinary men...
-        neighborhood[0] = imageBuffer[idxBL];
-        neighborhood[1] = imageBuffer[idxB];
-        neighborhood[2] = imageBuffer[idxBR];
-        neighborhood[3] = imageBuffer[idxL];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxR];
-        neighborhood[6] = imageBuffer[idxTL];
         neighborhood[7] = imageBuffer[idxT];
         neighborhood[8] = imageBuffer[idxTR];
         return;
@@ -138,18 +119,6 @@ void getNeighborhoodNearest(
         neighborhood[8] = imageBuffer[idxT];
         return;
     }
-    if (isTop && isLeft) {
-        neighborhood[0] = imageBuffer[idxB];
-        neighborhood[1] = imageBuffer[idxB];
-        neighborhood[2] = imageBuffer[idxBR];
-        neighborhood[3] = imageBuffer[idxC];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxR];
-        neighborhood[6] = imageBuffer[idxC];
-        neighborhood[7] = imageBuffer[idxC];
-        neighborhood[8] = imageBuffer[idxR];
-        return;
-    }
     if (isTop && !isLeft && !isRight) {
         neighborhood[0] = imageBuffer[idxBL];
         neighborhood[1] = imageBuffer[idxB];
@@ -158,6 +127,43 @@ void getNeighborhoodNearest(
         neighborhood[4] = imageBuffer[idxC];
         neighborhood[5] = imageBuffer[idxR];
         neighborhood[6] = imageBuffer[idxL];
+        neighborhood[7] = imageBuffer[idxC];
+        neighborhood[8] = imageBuffer[idxR];
+        return;
+    }
+    // Least common cases: corner pixel
+    if (isBottom && isLeft) {
+        neighborhood[0] = imageBuffer[idxC];
+        neighborhood[1] = imageBuffer[idxC];
+        neighborhood[2] = imageBuffer[idxR];
+        neighborhood[3] = imageBuffer[idxC];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxR];
+        neighborhood[6] = imageBuffer[idxT];
+        neighborhood[7] = imageBuffer[idxT];
+        neighborhood[8] = imageBuffer[idxTR];
+        return;
+    }
+    if (isBottom && isRight) {
+        neighborhood[0] = imageBuffer[idxL];
+        neighborhood[1] = imageBuffer[idxC];
+        neighborhood[2] = imageBuffer[idxC];
+        neighborhood[3] = imageBuffer[idxL];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxC];
+        neighborhood[6] = imageBuffer[idxTL];
+        neighborhood[7] = imageBuffer[idxT];
+        neighborhood[8] = imageBuffer[idxT];
+        return;
+    }
+    if (isTop && isLeft) {
+        neighborhood[0] = imageBuffer[idxB];
+        neighborhood[1] = imageBuffer[idxB];
+        neighborhood[2] = imageBuffer[idxBR];
+        neighborhood[3] = imageBuffer[idxC];
+        neighborhood[4] = imageBuffer[idxC];
+        neighborhood[5] = imageBuffer[idxR];
+        neighborhood[6] = imageBuffer[idxC];
         neighborhood[7] = imageBuffer[idxC];
         neighborhood[8] = imageBuffer[idxR];
         return;
