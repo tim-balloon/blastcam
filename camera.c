@@ -468,34 +468,48 @@ int getMonoAnalogGain(double* pAnalogGain)
 int setMonoAnalogGain(double analogGain)
 {
     int ret = 0;
-    // Only attempt if gain is writable
+    peak_status status = PEAK_STATUS_OUT_OF_RANGE;
+
+    // Only attempt if gain limits are readable
     peak_access_status accessStatus = peak_Gain_GetAccessStatus(hCam,
         PEAK_GAIN_TYPE_ANALOG, PEAK_GAIN_CHANNEL_MASTER);
-    if (PEAK_IS_WRITEABLE(accessStatus)) {
-        // Set the master gain for a mono sensor
-        peak_status status = peak_Gain_Set(hCam, PEAK_GAIN_TYPE_ANALOG,
-            PEAK_GAIN_CHANNEL_MASTER, analogGain);
+    if (PEAK_IS_READABLE(accessStatus)) {
+        // Check the gain against the limits
+        double minGain = 0.0;
+        double maxGain = 0.0;
+        double incGain = 0.0;
+        status = peak_Gain_GetRange(hCam, PEAK_GAIN_TYPE_ANALOG,
+            PEAK_GAIN_CHANNEL_MASTER, &minGain, &maxGain, &incGain);
         if (!checkForSuccess(status)) {
-            // If we failed, try to find out why: read gain limits
-            if (PEAK_IS_READABLE(accessStatus)) {
-                double minGain = 0.0;
-                double maxGain = 0.0;
-                double incGain = 0.0;
-                status = peak_Gain_GetRange(hCam, PEAK_GAIN_TYPE_ANALOG,
-                    PEAK_GAIN_CHANNEL_MASTER, &minGain, &maxGain, &incGain);
-                if (!checkForSuccess(status)) {
-                    fprintf(stderr, "Failed to check gain range.\n");
-                }
-                fprintf(stderr, "Available gain range is %f - %f, step %f.\n",
-                    minGain, maxGain, incGain);
-            }
-            fprintf(stderr, "Failed to set requested gain value %f.\n",
-                analogGain);
+            fprintf(stderr, "setMonoAnalogGain: Failed to check gain range. Not"
+                " setting gain.\n");
             ret = -1;
+        } else {
+            // Set gain, limited by range
+            if (verbose) {
+                printf("setMonoAnalogGain: Available gain range is %f - %f, "
+                    "step %f.\n", minGain, maxGain, incGain);
+            }
+            analogGain = (minGain > analogGain) ? minGain : analogGain;
+            analogGain = (maxGain < analogGain) ? maxGain : analogGain;
+            if (PEAK_IS_WRITEABLE(accessStatus)) {
+                status = peak_Gain_Set(hCam, PEAK_GAIN_TYPE_ANALOG,
+                    PEAK_GAIN_CHANNEL_MASTER, analogGain);
+                if (!checkForSuccess(status)) {
+                    fprintf(stderr, "setMonoAnalogGain: Failed to set requested"
+                        " gain value %f.\n", analogGain);
+                    ret = -1;
+                }
+            } else {
+                fprintf(stderr, "setMonoAnalogGain: Failed to set requested "
+                    "gain value %f. Gain is not writeable at this time.\n",
+                    analogGain);
+                ret = -1;
+            }
         }
     } else {
-        fprintf(stderr, "Failed to set requested gain value %f. Gain is not "
-            "writeable at this time.\n", analogGain);
+        fprintf(stderr, "Failed to set requested gain value %f. Gain limits are"
+             " not readable at this time.\n", analogGain);
         ret = -1;
     }
 
