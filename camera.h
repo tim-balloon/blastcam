@@ -53,6 +53,7 @@ enum solveState_t
     UNINIT,
     INIT,
     IMAGE_CAP,
+    IMAGE_XFER,
     HOTPIX_MASK,
     FILTERING,
     BLOB_FIND,
@@ -101,6 +102,7 @@ int saveImageToDisk(char* filename);
 int getFps(double* pCurrentFps);
 int imageTransfer(uint16_t* pUnpackedImage);
 int saveImageToDisk(char* filename, peak_frame_handle hFrame);
+int setMonoAnalogGain(double analogGain);
 #endif
 int doCameraAndAstrometry();
 void clean();

@@ -18,9 +18,11 @@
 #include "sc_data_structures.h"
 // #include "convolve.h"
 #include "fits_utils.h"
+// #include "timer.h"
 
 
 // #define AF_ALGORITHM_NEW
+// double deltaT = 0.0;
 
 void merge(double A[], int p, int q, int r, double X[],double Y[]);
 void part(double A[], int p, int r, double X[], double Y[]);
@@ -101,6 +103,9 @@ unsigned char * mask;
 
 struct timeval metadataTv;
 
+// struct timespec tstart = {0,0};
+// struct timespec tend = {0,0};
+
 uint16_t unpacked_image[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
 // for printing camera errors
 const char * cam_error;
@@ -115,7 +120,6 @@ int prev_dynamic_hp;
 
 // For realtime contrast AF
 // Have to declare here or we'd run out of stack space and mysterious-looking SEGFAULT
-// int32_t imageBuffer[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
 // float sobelResult[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
 
 /* Blob parameters global structure (defined in camera.h) */
@@ -128,7 +132,7 @@ struct blob_params all_blob_params = {
     .r_high_pass_filter = 10,     
     .centroid_search_border = 1,  
     .filter_return_image = 0,     
-    .n_sigma = 2.0,               
+    .n_sigma = 10.0,               
     .unique_star_spacing = 15,    
     .make_static_hp_mask = 0,     
     .use_static_hp_mask = 1,       
@@ -698,12 +702,13 @@ int setFps(double frameRateFps)
             "writeable at this time.\n");
         ret = -1;
     }
-    return ret;
 
     // Update metadata
     double currentFps = 10.0;;
     getFps(&currentFps);
     default_metadata.framerte = (float)currentFps;
+
+    return ret;
 }
 
 
@@ -1551,9 +1556,8 @@ int setCameraParams(void)
     //            curr_master_gain, curr_red_gain, curr_green_gain, curr_blue_gain);
     // }
 
-    // Set initial gain to 1x
-    double defaultAnalogGain = 1.0;
-    if (setMonoAnalogGain(defaultAnalogGain) < 0) {
+    // Set initial gain to default struct value
+    if (setMonoAnalogGain(all_camera_params.gainfact) < 0) {
         return -1;
     }
  
@@ -1983,7 +1987,7 @@ int loadCamera(void)
     // It's not strictly necessary to set the acquisition framerate, as it only
     // applies in FreeRun mode. Also, the range of allowed values depend on and
     // will be overridden by the exposure time setting.
-    setFps(10);
+    setFps(10.0);
 
     // pixelclock = 25;
     // // Check pixelclock allowed values, in case settings changes have caused it
@@ -2243,6 +2247,7 @@ int imageTransfer(uint16_t* pUnpackedImage)
  */
 int imageTransfer(uint16_t* pUnpackedImage)
 {
+    solveState = IMAGE_XFER;
     int ret = 0;
     peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
     double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
@@ -2348,7 +2353,7 @@ int imageTransfer(uint16_t* pUnpackedImage)
     // Create the output filename
     strftime(FITSfilename, sizeof(FITSfilename),
         "/home/starcam/Desktop/TIMSC/img/"
-        "saved_image_%Y-%m-%d_%H-%M-%S.fits.gz", tm_info);
+        "saved_image_%Y-%m-%d_%H-%M-%S.fits", tm_info);
 
     snprintf(default_metadata.filename, sizeof(default_metadata.filename),
         "%s", FITSfilename);
@@ -2623,6 +2628,53 @@ void boxcarFilterImage(uint16_t * ib, int i0, int j0, int i1, int j1, int r_f,
 }
 
 
+// /**
+//  * @brief Function that will do an approximate 3x3 Gaussian smoothing of an image.
+//  * @details If you want more smoothing, you should iteratively apply this
+//  * filter. sigma^2 = sigma_1^2 + sigma_2^2, sigma_1 = sigma_2
+//  * => sigma = sqrt(2) sigma_1
+//  * 
+//  * @param ib "input buffer" the input image with 12 bit depth, stored in 16bit ints
+//  * @param i0 starting column for filtering
+//  * @param j0 starting row for filtering
+//  * @param i1 ending column for filtering
+//  * @param j1 ending row for filtering
+//  * @param r_f boxcar filter radius
+//  * @param filtered_image output image
+//  */
+// void gaussianFilter3x3(
+//     uint16_t* inputBuffer,
+//     unsigned char* mask,
+//     float* filteredImage)
+// {
+//     // A Gaussian NxN = 3x3 kernel with sigma = (N - 1) / 4 = .5
+//     uint8_t kernelSize = 9;
+//     float kernel[9] = {1./16., 2./16., 1./16., 2./16., 4./16., 2./16., 1./16., 2./16., 1./16.};
+//     doConvolution(inputBuffer, CAMERA_WIDTH, CAMERA_WIDTH * CAMERA_HEIGHT, mask,
+//             kernel, kernelSize, filteredImage);
+// }
+
+// void filterN(
+//     uint16_t* inputBuffer,
+//     unsigned char* mask,
+//     float* filteredImage
+//     int N)
+// {
+//     int MAX_EVAL = 10;
+//     uint8_t kernelSize = 9;
+//     float kernel[9] = {1./16., 2./16., 1./16., 2./16., 4./16., 2./16., 1./16., 2./16., 1./16.};
+//     static float inputBufferFlt[CAMERA_WIDTH * CAMERA_HEIGHT] = {0.};
+//     for (unsigned int i = 0; i < CAMERA_WIDTH * CAMERA_HEIGHT) {
+//         inputBufferFlt[i] = (float)inputBuffer[i];
+//     }
+//     if (N > MAX_EVAL) {
+//         N = MAX_EVAL
+//     }
+//     while (N > 0) {
+//     }
+// }
+
+
 /* Function to find the blobs in an image.
 ** Inputs: The original image prior to processing (input_biffer), the dimensions
 ** of the image (w & h) pointers to arrays for the x coordinates, y coordinates,
@@ -2730,7 +2782,7 @@ int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x,
 
 
     // only high-pass filter full frames
-    if (all_blob_params.high_pass_filter) {       
+    if (all_blob_params.high_pass_filter) {
         b += all_blob_params.r_high_pass_filter;
 
         boxcarFilterImage(input_buffer, i0, j0, i1, j1, 
@@ -3020,7 +3072,7 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 }
 
 
-// int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm* tm_info, char* output_buffer) {
+// int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm* tm_info, uint16_t* output_buffer) {
 //     // Housekeeping
 //     static FILE * af_file = NULL;
 //     static char af_filename[256];
@@ -3036,7 +3088,7 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //     char focusStrCmd[10] = {'\0'};
 
 //     // Contrast detect algorithm parameters
-//     uint16_t sobelKernelx[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
+//     float sobelKernelx[9] = {-1., 0., 1., -2., 0., 2., -1., 0., 1.};
 //     uint16_t kernelSize = 9;
 
 //     // Initialize focuser and AF logging
@@ -3110,7 +3162,6 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //         // return to default focus position
 //         if (defaultFocusPosition() < 1) {
 //             printf("Error moving to default focus position.\n");
-//             closeCamera();
 //             return -1;
 //         }
 
@@ -3145,14 +3196,11 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //             printf("Quitting autofocus by user cancel...\n");
 //             break;
 //         }
+
 //         taking_image = 1;
-//         if (verbose) {
-//             printf("\n> Taking a new image...\n\n");
-//         }
-//         // IS_WAIT returns when image exposure->readout->preprocessing->transfer to memory is complete
-//         if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
-//             const char * last_error_str = printCameraError();
-//             printf("Failed to capture new image: %s\n", last_error_str);
+//         if (imageCapture() < 0) {
+//             fprintf(stderr, "Could not complete image capture: %s.\n", 
+//                 strerror(errno));
 //         }
 //         taking_image = 0;
 
@@ -3160,25 +3208,25 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //         photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
 //         all_astro_params.photo_time = photo_time;
 
-//         // ECM kind of an abuse of the API, but it works, so I'll copy it
-//         if (is_GetActSeqBuf(camera_handle, &buffer_num, &waiting_mem, &memory) 
-//             != IS_SUCCESS) {
-//             cam_error = printCameraError();
-//             printf("Error retrieving the active image memory: %s.\n", cam_error);
+//         #ifndef IDS_PEAK
+//         if (imageTransfer(unpacked_image) < 0) {
+//             fprintf(stderr, "Could not complete image transfer: %s.\n", 
+//             strerror(errno));
+//             return -1;
 //         }
+//         #else
+//         if (imageTransfer(unpacked_image) < 0) {
+//             fprintf(stderr, "Could not complete image transfer: %s.\n", 
+//             strerror(errno));
+//             return -1;
+//         }
+//         #endif
 
 //         // make kst display the filtered image
-//         memcpy(output_buffer, memory, CAMERA_WIDTH*CAMERA_HEIGHT);
+//         memcpy(output_buffer, unpacked_image, CAMERA_WIDTH*CAMERA_HEIGHT * sizeof(uint16_t));
 //         // pointer for transmitting to user should point to where image is in memory
-//         camera_raw = output_buffer;
+//         // camera_raw = output_buffer;
 
-//         // TODO(evanmayer) use the already-transferred array here
-//         // Image unpacking/type conversion
-//         // 12-bit unpacking function goes here instead
-//         uint32_t imageNumPix = CAMERA_WIDTH * CAMERA_HEIGHT;
-//         for (uint32_t i = 0; i < imageNumPix; i++) {
-//             imageBuffer[i] = (int32_t)memory[i];
-//         }
 
 //         // ECM N.B.: uEye API has functions to calc sharpness in hardware
 //         // but they are not supported on our camera. I think they're only
@@ -3187,18 +3235,19 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 
 //         // Used for edge cases in convolution and later for normalizing
 //         // the contrast metric
-//         uint16_t imageAverage = average(imageBuffer, imageNumPix);
+//         uint32_t imageNumPix = CAMERA_WIDTH * CAMERA_HEIGHT;
+//         uint16_t imageAverage = average(unpacked_image, imageNumPix);
 
 //         // Sobel filter for contrast detection
 //         // Usually, you want to judge sharpness based on the magnitude of
 //         // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
 //         // Because we assume stars are mostly round, we can just take
 //         // either and save a convolution.
-//         doConvolution(imageBuffer, imageAverage, CAMERA_WIDTH, imageNumPix, mask,
+//         doConvolution(unpacked_image, CAMERA_WIDTH, imageNumPix, mask,
 //             sobelKernelx, kernelSize, sobelResult);
 //         // Let the sharpness metric be the sum of squared gradients, as
 //         // estimated by the Sobel operator
-//         double sobelMetric = 0;
+//         double sobelMetric = 0.0;
 //         for (uint32_t i = 0; i < imageNumPix; i++) {
 //             float result = sobelResult[i];
 //             sobelMetric += result * result;
@@ -3207,9 +3256,9 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //         // We normalize by something proportional to the shot noise in the
 //         // image to handle cases where the shot noise, and thus the sum of
 //         // squared gradients, is changing rapidly during an AF run
-//         // if (0 != imageAverage) {
-//         //     sobelMetric /= imageAverage;
-//         // }
+//         if (imageAverage > 1) {
+//             sobelMetric /= imageAverage;
+//         }
 
 //         // Save off commanded position and max gradient in image
 //         if (sobelMetric >= bestFocusGrad) {
@@ -3218,10 +3267,10 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //         }
 
 //         // Save off data in AF logfile
-//         // flux is int, sobelMetric is double...
 //         // sobelMetric is gradient sharpness metric, not flux,
 //         // but same diff...har har
-//         all_camera_params->flux = (int)(max(min(sobelMetric, INT_MAX), INT_MIN));
+//         all_camera_params->flux = sobelMetric;
+
 //         printf("(*) Sobel metric in image for focus %d is %lf.\n",
 //             all_camera_params->focus_position, sobelMetric);
 //         fprintf(af_file, "%.6lf\t%5d\n", sobelMetric,
@@ -3239,7 +3288,7 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //                     printf("> Waiting for data to send to client...\n");
 //                 }
 
-//                 usleep(1000);
+//                 usleep(10000);
 //             }
 //         }
 //         send_data = 0;
@@ -3330,6 +3379,7 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 */
 int doCameraAndAstrometry(void)
 {
+    // START(tstart);
     // these must be static since this function is called perpetually in 
     // updateAstrometry thread
     static double * star_x = NULL, * star_y = NULL, * star_mags = NULL;
@@ -3414,35 +3464,25 @@ int doCameraAndAstrometry(void)
                                      "%H:%M:%S GMT", tm_info);
         fprintf(fptr, "\n");
         fprintf(fptr, "# ********************* %s *********************\n", buff);
-        // fprintf(fptr, "# Camera model: %s\n", sensorInfo.strSensorName);
-        // fprintf(fptr, "# ----------------------------------------------------\n");
-        // fprintf(fptr, "# Exposure: %f milliseconds\n", curr_exposure);
-        // fprintf(fptr, "# Pixel clock: %i\n", curr_pc);
-        // fprintf(fptr, "# Frame rate achieved (desired is 10): %f\n", getFps());
-        // fprintf(fptr, "# Trigger delay (microseconds): %i\n", curr_trig_delay);
-        // fprintf(fptr, "# Current trigger mode setting: %i\n", curr_ext_trig);
-        // fprintf(fptr, "# Current trigger timeout: %i\n", curr_timeout);
-        // fprintf(fptr, "# Auto shutter: %.1f\n", curr_shutter);
-        // fprintf(fptr, "# Auto frame rate (should be disabled): %.1f\n", auto_fr);
-        // fprintf(fptr, "# ----------------------------------------------------\n");
-        // fprintf(fptr, "# Sensor ID/type: %u\n", sensorInfo.SensorID);
-        // fprintf(fptr, "# Sensor color mode (from is_GetSensorInfo and "
-        //               "is_SetColorMode): %i | %i\n", 
-        //         sensorInfo.nColorMode, curr_color_mode);
-        // fprintf(fptr, "# Maximum image width and height: %i, %i\n", 
-        //                sensorInfo.nMaxWidth, sensorInfo.nMaxHeight);
-        // fprintf(fptr, "# Pixel size (micrometers): %.2f\n", 
-        //               ((double) sensorInfo.wPixelSize)/100.0);
-        // fprintf(fptr, "# Gain settings: %i for master gain, %i for red gain, %i "
-        //               "for green gain, and %i for blue gain.\n", 
-        //               curr_master_gain, curr_red_gain, curr_green_gain, 
-        //               curr_blue_gain);
-        // fprintf(fptr, "# Auto gain (should be disabled): %i\n", (int) curr_ag);
-        // fprintf(fptr, "# Gain boost (should be disabled): %i\n", curr_gain_boost);
-        // fprintf(fptr, "# Hardware gamma (should be disabled): %i\n", curr_gamma);
-        // fprintf(fptr, "# ----------------------------------------------------\n");
-        // fprintf(fptr, "# Auto black level (should be off): %i\n", bl_mode);
-        // fprintf(fptr, "# Black level offset (desired is 50): %i\n", bl_offset);
+        fprintf(fptr, "# Camera model: %s\n", default_metadata.detector);
+        fprintf(fptr, "# ----------------------------------------------------\n");
+        fprintf(fptr, "# Exposure: %f milliseconds\n", default_metadata.exptime * 1000.0);
+        fprintf(fptr, "# Pixel clock: %f MHz\n", default_metadata.pixelclk);
+        fprintf(fptr, "# Frame rate achieved (desired is 10): %f\n", default_metadata.framerte);
+        fprintf(fptr, "# Trigger delay (microseconds): %f\n", default_metadata.trigdlay);
+        fprintf(fptr, "# Auto shutter: %i\n", default_metadata.autoexp);
+        fprintf(fptr, "# ----------------------------------------------------\n");
+        fprintf(fptr, "# Sensor ID/type: %lu\n", default_metadata.sensorid);
+        fprintf(fptr, "# Sensor bit depth %u\n", default_metadata.bitdepth);
+        fprintf(fptr, "# Maximum image width and height: %i, %i\n", 
+                       CAMERA_WIDTH, CAMERA_HEIGHT);
+        fprintf(fptr, "# Pixel size (micrometers): %.2f\n", 
+                      default_metadata.pixsize1);
+        fprintf(fptr, "# Mono gain setting: %.2fx base\n", default_metadata.gainfact);
+        fprintf(fptr, "# Auto gain (should be disabled): %i\n", (int) default_metadata.autogain);
+        fprintf(fptr, "# Auto exposure (should be disabled): %i\n", (int) default_metadata.autoexp);
+        fprintf(fptr, "# Auto black level (should be disabled): %i\n", (int) default_metadata.autoblk);
+        fprintf(fptr, "# Black level offset (desired is 50): %u\n", default_metadata.bloffset);
 
         // write header to data file
         if (fprintf(fptr, "C time,GMT,Blob #,RA (deg),DEC (deg),RA_OBS (deg),DEC_OBS (deg),FR (deg),PS,"
@@ -3462,7 +3502,9 @@ int doCameraAndAstrometry(void)
     // // Hijack AF with new alg, which should set
     // // all_camera_params.focus_mode = 0 when done to bypass old AF
     // if (all_camera_params.begin_auto_focus && all_camera_params.focus_mode) {
+    //     solveState = AUTOFOCUS;
     //     doContrastDetectAutoFocus(&all_camera_params, tm_info, output_buffer);
+    //     all_camera_params.focus_mode = 0;
     // }
     // #endif
     if (all_camera_params.begin_auto_focus && all_camera_params.focus_mode) {
@@ -3593,7 +3635,7 @@ int doCameraAndAstrometry(void)
     #endif
 
 
-    // TODO(evanmayer): implement an iDS peak image loader
+    // TODO(evanmayer): implement a FITS image loader
     // testing pictures that have already been taken
     // if you uncomment this for testing, you may need to change the path.
     // if (loadDummyPicture(L"/home/starcam/saved_image_2022-07-06_08-31-30.bmp", //L"/home/starcam/Desktop/TIMSC/img/load_image.bmp", 
@@ -3945,5 +3987,7 @@ int doCameraAndAstrometry(void)
             free(star_mags);
         }
     }
+    // STOP(tend);
+    // DISPLAY_DELTA("|||||| doCameraAndAstrometry", DELTA(tend, tstart));
     return 1;
 }
