@@ -2668,26 +2668,6 @@ void boxcarFilterImage(uint16_t * ib, int i0, int j0, int i1, int j1, int r_f,
 //             kernel, kernelSize, filteredImage);
 // }
 
-// void filterN(
-//     uint16_t* inputBuffer,
-//     unsigned char* mask,
-//     float* filteredImage
-//     int N)
-// {
-//     int MAX_EVAL = 10;
-//     uint8_t kernelSize = 9;
-//     float kernel[9] = {1./16., 2./16., 1./16., 2./16., 4./16., 2./16., 1./16., 2./16., 1./16.};
-//     static float inputBufferFlt[CAMERA_WIDTH * CAMERA_HEIGHT] = {0.};
-//     for (unsigned int i = 0; i < CAMERA_WIDTH * CAMERA_HEIGHT) {
-//         inputBufferFlt[i] = (float)inputBuffer[i];
-//     }
-//     if (N > MAX_EVAL) {
-//         N = MAX_EVAL
-//     }
-//     while (N > 0) {
-//     }
-// }
-
 
 /* Function to find the blobs in an image.
 ** Inputs: The original image prior to processing (input_biffer), the dimensions
