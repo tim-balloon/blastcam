@@ -152,6 +152,10 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
     solver->funits_upper = MAX_PS;
     
     // set max number of sources
+    unsigned int original_num_blobs = num_blobs;
+    if (num_blobs > MAX_BLOBS) {
+        num_blobs = MAX_BLOBS;
+    }
     solver->endobj = num_blobs;
 
     // disallow tiny quads
@@ -316,7 +320,8 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
         printf("|\t\tTelemetry\t\t\t\t  |\n");
         printf("|---------------------------------------------------------|\n");
         printf("|\tRaw time (sec): %.1f\t\t\t  |\n", all_astro_params.rawtime);
-        printf("|\tNumber of blobs found: %i\t\t\t  |\n", num_blobs);
+        printf("|\tNumber of blobs found: %i\t\t\t  |\n", original_num_blobs);
+        printf("|\tNumber of blobs used: %i\t\t\t  |\n", num_blobs);
         printf("|\tAstrometry RA (deg): %lf\t\t\t  |\n", ra);
         printf("|\tAstrometry DEC (deg): %lf\t\t\t  |\n", dec);
         printf("|\tObserved RA (deg): %lf\t\t\t  |\n", all_astro_params.ra);

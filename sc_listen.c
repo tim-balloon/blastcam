@@ -238,6 +238,22 @@ void process_command_packet(struct star_cam_capture data){
                        "commands.\n");
             }
         }
+        if (data.update_gainFact == 1)
+        {
+            printf("Received update to GAIN parameter\n");
+            if (!all_camera_params.focus_mode && !cancelling_auto_focus) {
+                // if user adjusted gain, set gainfact to their value
+                if (fabs(data.gainFact - all_camera_params.gainfact) > 1E-9) {
+                    // update value in camera params struct as well
+                    all_camera_params.gainfact = data.gainFact;
+                    all_camera_params.change_gainfact_bool = 1;
+                }
+            } else {
+                printf("In or entering auto-focusing mode, or cancelling "
+                       "current auto-focus process, so ignore lens " 
+                       "commands.\n");
+            }
+        }
         if (data.update_setFocusInf == 1)
         {
             printf("Received update to SET FOCUS INF parameter\n");

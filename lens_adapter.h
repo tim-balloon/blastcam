@@ -24,7 +24,9 @@ struct camera_params {
     // camera parameter, not lens parameter, but adjustments to it are made in 
     // lens_adapter.c
     double exposure_time;
-    double change_exposure_bool;
+    int change_exposure_bool;
+    double gainfact;
+    int change_gainfact_bool;
     // auto-focusing parameters & data
     int begin_auto_focus;       // flag to enter auto-focusing
     int focus_mode;             // state of auto-focusing (1 = on, 0 = off)
@@ -32,7 +34,7 @@ struct camera_params {
     int end_focus_pos;          // where to end the auto-focusing process
     int focus_step;             // granularity of auto-focusing checker
     int photos_per_focus;       // number of photos per auto-focusing position
-    int flux;                   // brightness of most recent maximum flux
+    double flux;                   // brightness of most recent maximum flux
 };
 #pragma pack(pop)
 

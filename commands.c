@@ -36,6 +36,7 @@ struct commands {
     double longitude;       // user's longitude (degrees)
     double height;          // user's height above ellipsoid from GPS (WGS84)
     double exposure;        // user's desired camera exposure (msec)
+    double gainfact;        // user's desired gain factor (x times base gain DN/e-)
     double timelimit;       // Astrometry tries to solve until this timeout
     float focus_pos;        // user's desired focus position (counts)
     int focus_mode;         // flag to enter auto-focusing mode
@@ -87,6 +88,19 @@ static const struct option long_options[] = {
     { "serial",    required_argument, NULL, 's' },
     { "port",      required_argument, NULL, 'p' },
     { NULL,        no_argument,       NULL,  0  },
+};
+
+// Helper for printing state machine states
+const char* solveStateStr[NUM_STATES] = {
+    "Uninitialized",
+    "Initializing",
+    "Image Capture",
+    "Image Transfer",
+    "Hot Pixel Masking",
+    "Filtering",
+    "Blob Finding",
+    "Autofocus",
+    "Astrometry"
 };
 
 struct commands all_cmds = {0};
@@ -157,6 +171,7 @@ void verifyUserCommands() {
     printf("|\tLatitude | longitude: %f | %f\t  |\n", all_cmds.latitude, 
                                               all_cmds.longitude);
     printf("|\tExposure command in commands.c: %f\t  |\n", all_cmds.exposure);
+    printf("|\tGain command in commands.c: %f\t\t\t  |\n", all_cmds.gainfact);
     printf("|\tAstrometry timeout: %f\t\t\t  |\n", all_cmds.timelimit);
     printf("|\tFocus mode: %s\t\t\t  |\n", (all_cmds.focus_mode) ? 
            "Auto-focus" : "Normal focus");
@@ -339,6 +354,13 @@ void * processClient(void * for_client_thread) {
                     // update value in camera params struct as well
                     all_camera_params.exposure_time = all_cmds.exposure;
                     all_camera_params.change_exposure_bool = 1;
+                }
+
+                // if user adjusted gain, set gainfact to their value
+                if (fabs(all_cmds.gainfact - all_camera_params.gainfact) > 1E-9) {
+                    // update value in camera params struct as well
+                    all_camera_params.gainfact = all_cmds.gainfact;
+                    all_camera_params.change_gainfact_bool = 1;
                 }
 
                 // contradictory commands between setting focus to inf and 
@@ -805,6 +827,13 @@ int main(int argc, char * argv[]) {
         printf("| Server waiting for new client, %d already connected\t  |\n",
            num_clients);
         printf("+---------------------------------------------------------+\n");
+
+        // Inform the user of the processing state
+        if (verbose) {
+            printf("+=========================================================+\n");
+            printf("| Current state: %s\n", solveStateStr[solveState]);
+            printf("+=========================================================+\n");
+        }
 
         // store length of client that has connected (if any)
         client_addr_len = sizeof(client_addr);
