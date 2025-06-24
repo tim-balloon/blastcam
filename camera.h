@@ -29,6 +29,8 @@ extern HIDS camera_handle;
 #endif
 #define CAMERA_MARGIN  0		 // [px]
 #define CAMERA_MAX_PIXVAL 4095 //  2**12
+#define MIN_BLOBS 4
+#define MAX_BLOBS 300
 #define STATIC_HP_MASK "/home/starcam/Desktop/TIMSC/static_hp_mask.txt"
 #define dut1           -0.23
 
@@ -45,6 +47,21 @@ struct trigger_params
     int trigger; // 1 to take image if trigger mode is 1
     int trigger_timeout_us; // time in µs to wait between checks for a trigger
 };
+
+enum solveState_t
+{
+    UNINIT,
+    INIT,
+    IMAGE_CAP,
+    IMAGE_XFER,
+    HOTPIX_MASK,
+    FILTERING,
+    BLOB_FIND,
+    AUTOFOCUS,
+    ASTROMETRY,
+    NUM_STATES
+};
+extern enum solveState_t solveState;
 
 
 /* Blob-finding parameters */
@@ -85,6 +102,7 @@ int saveImageToDisk(char* filename);
 int getFps(double* pCurrentFps);
 int imageTransfer(uint16_t* pUnpackedImage);
 int saveImageToDisk(char* filename, peak_frame_handle hFrame);
+int setMonoAnalogGain(double analogGain);
 #endif
 int doCameraAndAstrometry();
 void clean();

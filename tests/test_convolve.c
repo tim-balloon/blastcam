@@ -7,10 +7,10 @@
 
 #include "../convolve.h"
 
-// #define IMAGE_WIDTH 5320
-// #define IMAGE_HEIGHT 3032
-#define IMAGE_WIDTH 11
-#define IMAGE_HEIGHT 11
+#define IMAGE_WIDTH 5320
+#define IMAGE_HEIGHT 3032
+//#define IMAGE_WIDTH 11
+//#define IMAGE_HEIGHT 11
 
 uint16_t imageBuffer[IMAGE_WIDTH * IMAGE_HEIGHT] = {0};
 unsigned char mask[IMAGE_WIDTH * IMAGE_HEIGHT] = {0};
