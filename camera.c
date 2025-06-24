@@ -463,7 +463,7 @@ int getMonoAnalogGain(double* pAnalogGain)
  * Side effect: updates metadata struct
  * 
  * @param analogGain multiplicative factor applied to the base gain
- * @return int 
+ * @return int -1 if failed, 0 otherwise
  */
 int setMonoAnalogGain(double analogGain)
 {
