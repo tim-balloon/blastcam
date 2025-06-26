@@ -193,18 +193,18 @@ void getNeighborhoodNearest(
  * here, you heathen.
  * @return the result of the convolution
  */
-float convolve9(uint16_t* array, int16_t* kernel)
+float convolve9(uint16_t* array, float* kernel)
 {
     return (
-        (float)array[0] * (float)kernel[8] +
-        (float)array[1] * (float)kernel[7] +
-        (float)array[2] * (float)kernel[6] +
-        (float)array[3] * (float)kernel[5] +
-        (float)array[4] * (float)kernel[4] +
-        (float)array[5] * (float)kernel[3] +
-        (float)array[6] * (float)kernel[2] +
-        (float)array[7] * (float)kernel[1] +
-        (float)array[8] * (float)kernel[0]
+        (float)array[0] * kernel[8] +
+        (float)array[1] * kernel[7] +
+        (float)array[2] * kernel[6] +
+        (float)array[3] * kernel[5] +
+        (float)array[4] * kernel[4] +
+        (float)array[5] * kernel[3] +
+        (float)array[6] * kernel[2] +
+        (float)array[7] * kernel[1] +
+        (float)array[8] * kernel[0]
     );
 }
 
@@ -220,7 +220,6 @@ float convolve9(uint16_t* array, int16_t* kernel)
  * noise like PMCs, a variable-radius filter is required.
  * 
  * @param[in] imageBuffer
- * @param imageMean
  * @param imageWidth 
  * @param imageNumPix 
  * @param[in] mask hot pixel mask, whether or not to include pixel in calculations
@@ -230,11 +229,10 @@ float convolve9(uint16_t* array, int16_t* kernel)
  */
 void doConvolution(
     uint16_t* imageBuffer,
-    uint16_t imageMean,
     uint16_t imageWidth,
     uint32_t imageNumPix,
     unsigned char* mask,
-    int16_t* kernel,
+    float* kernel,
     uint8_t kernelSize,
     float* imageResult)
 {
