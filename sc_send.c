@@ -32,6 +32,7 @@ static int populate_astrometry_packet(struct mcp_astrometry * packet_data) {
     packet_data->ra_j2000 = all_astro_params.ra_j2000;
     packet_data->ra_observed = all_astro_params.ra;
     packet_data->rawtime = all_astro_params.rawtime;
+    packet_data->numBlobsFound = all_astro_params.numBlobsFound;
     return 1;
 }
 
