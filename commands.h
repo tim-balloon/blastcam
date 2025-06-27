@@ -10,6 +10,5 @@ extern int cancelling_auto_focus;
 extern int verbose;
 extern uint16_t camera_raw[CAMERA_WIDTH * CAMERA_HEIGHT];
 void * processClient(void * arg);
-extern struct mcp_astrometry mcp_astro;
 
 #endif
