@@ -37,6 +37,7 @@ struct mcp_astrometry mcp_astro;
 struct astrometry all_astro_params = {
     .timelimit = 1,
     .rawtime = 0,
+    .numBlobsFound = 0,
     .logodds = 1e8,
     .latitude = backyard_lat,
     .longitude = backyard_long,
@@ -157,6 +158,7 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
         num_blobs = MAX_BLOBS;
     }
     solver->endobj = num_blobs;
+    all_astro_params.numBlobsFound = original_num_blobs;
 
     // disallow tiny quads
     solver->quadsize_min = 0.1*MIN(CAMERA_WIDTH - 2*CAMERA_MARGIN, 
@@ -304,6 +306,9 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
         mcp_astro.dec_observed = dob*(180.0/M_PI);
         mcp_astro.ra_observed = rob*(180.0/M_PI);
         mcp_astro.image_rms = sigma_pointing_as;
+        // ECM: unsure if mcp_astro is even being used, since
+        // populate_astrometry_packet() exists and pulls from all_astro_params
+        mcp_astro.numBlobsFound = original_num_blobs;
         // update astro struct with telemetry
         all_astro_params.dec_j2000 = dec;
         all_astro_params.ra_j2000 = ra;

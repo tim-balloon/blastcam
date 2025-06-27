@@ -56,7 +56,7 @@ struct fits_metadata_t default_metadata = {
 
 int main(int argc, int* argv)
 {
-    char fileName[13] = "test.fits.gz";
+    char fileName[13] = "test.fits";
     uint16_t imageMem[TEST_FITS_IMG_WIDTH * TEST_FITS_IMG_HEIGHT] = {0};
 
     imageMem[(TEST_FITS_IMG_WIDTH * TEST_FITS_IMG_HEIGHT + TEST_FITS_IMG_WIDTH) / 2] = 4095;

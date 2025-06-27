@@ -12,6 +12,7 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags,
 struct astrometry {
     double timelimit;
     double rawtime;
+    unsigned int numBlobsFound;
     // for solving altaz
     double logodds;
     double latitude;

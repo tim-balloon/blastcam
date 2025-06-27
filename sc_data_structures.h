@@ -39,6 +39,7 @@ struct mcp_astrometry {
     double alt;
     double az;
     double photo_time;
+    unsigned int numBlobsFound; // number of blobs found in image
 };
 
 struct comms_data {

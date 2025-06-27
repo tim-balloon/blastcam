@@ -52,11 +52,11 @@ int main(int argc, char* argv[]) {
     }
     imageBuffer[imageNumPix / 2] = 100;
 
-    uint16_t kernel[9] = {1, 2, 1, 2, 4, 2, 1, 2, 1}; // gaussian
+    float kernel[9] = {1./16., 2./16., 1./16., 2./16., 4./16., 2./16., 1./16., 2./16., 1./16.}; // gaussian
     // technically, sobel takes G = (G_x^2 + G_y^2)^.5 as an approximation of
     // the gradient, but stars are round, so any stars (or indeed other
     // features) will be sharp in x,y, or any other direction.
-    // int16_t kernel[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1}; // sobel x
+    // float kernel[9] = {-1., 0., 1., -2., 0., 2., -1., 0., 1.}; // sobel x
     uint16_t kernelSize = 9;
 
     struct timespec tstart = {0,0};
@@ -69,7 +69,8 @@ int main(int argc, char* argv[]) {
         nCalls -= 1;
         clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tstart);
 
-        doConvolution(imageBuffer, fakeMean, imageWidth, imageNumPix, mask, kernel, kernelSize, imageResult);
+        doConvolution(imageBuffer, imageWidth, imageNumPix, mask, kernel,
+            kernelSize, imageResult);
 
         clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tconv);
 
@@ -81,14 +82,6 @@ int main(int argc, char* argv[]) {
         }
 
         clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tend);
-
-        // if using Gaussian kernel to blur, divide by kernel prefactor to
-        // preserve flux
-        if (kernel[4] == 4) {
-            for (uint32_t i = 0; i < imageNumPix; i++) {
-                imageResult[i] /= 16.0;
-            }
-        }
 
         printf("doConvolution took about %.7f seconds to do conv, %.7f seconds "
             "to calc sqSum %lf\n",
