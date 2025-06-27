@@ -2169,6 +2169,59 @@ int saveImageToDisk(char* filename, peak_frame_handle hFrame)
     }
     return ret;
 }
+
+
+/**
+ * @brief save the unprocessed image to disk as a comrpessed FITS file.
+ * @details this should be called AFTER submitting the image to astrometry,
+ * in order to avoid solution latency to the flight control software.
+ * 
+ * @param pUnpackedImage pointer to array of image bytes
+ * @return int -1 if failed, 0 otherwise
+ */
+int saveFITStoDisk(uint16_t* pUnpackedImage)
+{
+    int ret = 0;
+    // Record file creation date as str
+    time_t seconds = time(NULL);
+    struct tm* tm_info;
+    tm_info = gmtime(&seconds);
+    // if it is a leap year, adjust tm_info accordingly before it is passed to 
+    // calculations in lostInSpace
+    if (isLeapYear(tm_info->tm_year)) {
+        // if we are on Feb 29
+        if (tm_info->tm_yday == 59) {
+            // 366 days in a leap year
+            tm_info->tm_yday++;
+            // we are still in February 59 days after January 1st (Feb 29)
+            tm_info->tm_mon -= 1;
+            tm_info->tm_mday = 29;
+        } else if (tm_info->tm_yday > 59) {
+            tm_info->tm_yday++;
+        }
+    }
+    // Copy the creation date into the metadata struct
+    strftime(default_metadata.date, sizeof(default_metadata.date),
+        "%Y-%m-%d_%H-%M-%S", tm_info);
+
+    char FITSfilename[256] = "";
+    // Create the output filename
+    strftime(FITSfilename, sizeof(FITSfilename),
+        "/home/starcam/Desktop/TIMSC/img/"
+        "saved_image_%Y-%m-%d_%H-%M-%S.fits", tm_info);
+
+    snprintf(default_metadata.filename, sizeof(default_metadata.filename),
+        "%s", FITSfilename);
+
+    // Write the FITS File
+    int FITSstatus = writeImage(FITSfilename, pUnpackedImage, CAMERA_WIDTH,
+        CAMERA_HEIGHT, &default_metadata);
+    if (0 != FITSstatus) {
+        fprintf(stderr, "ERROR: writeImage failed.\n");
+        ret = -1;
+    }
+    return ret;
+}
 #endif
 
 
@@ -2323,11 +2376,8 @@ int imageTransfer(uint16_t* pUnpackedImage)
         CAMERA_WIDTH * CAMERA_HEIGHT);
 
     // ---------------------------------------------------------------------- //
-    // Metadata handling and file saving
+    // Metadata handling
     // ---------------------------------------------------------------------- //
-    // if (saveImageToDisk(filename, hFrame) < 0) {
-    //     fprintf(stderr, "WARNING: Failed to save frame to disk.\n");
-    // }
 
     // Record the whole number and microsecond parts of the timestamp as the
     // time of observation start
@@ -2340,45 +2390,6 @@ int imageTransfer(uint16_t* pUnpackedImage)
     // issued. So it should be current, and we don't want to ask the lens again.
     default_metadata.focus = (int16_t)all_camera_params.focus_position;
     default_metadata.aperture = (int16_t)all_camera_params.current_aperture;
-
-    // Record file creation date as str
-    time_t seconds = time(NULL);
-    struct tm* tm_info;
-    tm_info = gmtime(&seconds);
-    // if it is a leap year, adjust tm_info accordingly before it is passed to 
-    // calculations in lostInSpace
-    if (isLeapYear(tm_info->tm_year)) {
-        // if we are on Feb 29
-        if (tm_info->tm_yday == 59) {
-            // 366 days in a leap year
-            tm_info->tm_yday++;
-            // we are still in February 59 days after January 1st (Feb 29)
-            tm_info->tm_mon -= 1;
-            tm_info->tm_mday = 29;
-        } else if (tm_info->tm_yday > 59) {
-            tm_info->tm_yday++;
-        }
-    }
-    // Copy the creation date into the metadata struct
-    strftime(default_metadata.date, sizeof(default_metadata.date),
-        "%Y-%m-%d_%H-%M-%S", tm_info);
-
-    char FITSfilename[256] = "";
-    // Create the output filename
-    strftime(FITSfilename, sizeof(FITSfilename),
-        "/home/starcam/Desktop/TIMSC/img/"
-        "saved_image_%Y-%m-%d_%H-%M-%S.fits", tm_info);
-
-    snprintf(default_metadata.filename, sizeof(default_metadata.filename),
-        "%s", FITSfilename);
-
-    // Write the FITS File
-    int FITSstatus = writeImage(FITSfilename, pUnpackedImage, CAMERA_WIDTH,
-        CAMERA_HEIGHT, &default_metadata);
-    if (0 != FITSstatus) {
-        fprintf(stderr, "ERROR: writeImage failed.\n");
-        ret = -1;
-    }
 
     status = peak_Frame_Release(hCam, hFrame);
     if(!checkForSuccess(status)) {
@@ -3929,15 +3940,7 @@ int doCameraAndAstrometry(void)
     #ifndef IDS_PEAK
     saveImageToDisk(filename);
     #else
-    // temporary: solve cyclic dependency between filename time of validity and
-    // frame capture time.
-    // The frame was saved to disk at transfer time, when the frame handle was
-    // available, with a generic name. Now that we have the final filename,
-    // rename the generic saved file on disk.
-    // if (rename(tmpFileName, filename)) {
-    //     fprintf(stderr, "Unable to rename captured image file to %s: %s.\n",
-    //         filename, strerror(errno));
-    // }
+    saveFITStoDisk(unpacked_image);
     #endif
 
     // printf("Saving captured frame to \"%s\"\n", filename);
