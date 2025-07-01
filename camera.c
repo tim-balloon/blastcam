@@ -16,13 +16,12 @@
 #include "lens_adapter.h"
 #include "matrix.h"
 #include "sc_data_structures.h"
-// #include "convolve.h"
+#include "convolve.h"
 #include "fits_utils.h"
-// #include "timer.h"
+#include "timer.h"
 
 
-// #define AF_ALGORITHM_NEW
-// double deltaT = 0.0;
+#define AF_ALGORITHM_NEW
 
 void merge(double A[], int p, int q, int r, double X[],double Y[]);
 void part(double A[], int p, int r, double X[], double Y[]);
@@ -103,10 +102,11 @@ unsigned char * mask;
 
 struct timeval metadataTv;
 
-// struct timespec tstart = {0,0};
-// struct timespec tend = {0,0};
+double deltaT = 0.0;
+struct timespec tstart = {0,0};
+struct timespec tend = {0,0};
 
-uint16_t unpacked_image[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
+uint16_t unpacked_image[CAMERA_NUM_PX] = {0};
 // for printing camera errors
 const char * cam_error;
 // 'curr' = current, 'pc' = pixel clock, 'fps' = frames per sec, 
@@ -120,7 +120,9 @@ int prev_dynamic_hp;
 
 // For realtime contrast AF
 // Have to declare here or we'd run out of stack space and mysterious-looking SEGFAULT
-// float sobelResult[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
+float imageFloatIn[CAMERA_NUM_PX] = {0};
+float imageFloatOut[CAMERA_NUM_PX] = {0};
+float sobelResult[CAMERA_NUM_PX] = {0};
 
 /* Blob parameters global structure (defined in camera.h) */
 struct blob_params all_blob_params = {
@@ -1244,8 +1246,6 @@ int initCamera(void)
     // // set how images are saved
     // setSaveImage();
 
-    // Image saving handled in imageTransfer()
-
     // In place of logging all sensor parameters to a text file, save off the
     // camera parameter file.
     // This file is human-readable, and can be used to replicate the device
@@ -2295,7 +2295,7 @@ int imageTransfer(uint16_t* pUnpackedImage)
         return -1;
     }
 
-    unpack_mono12(pLocalMem, pUnpackedImage, CAMERA_WIDTH * CAMERA_HEIGHT);
+    unpack_mono12(pLocalMem, pUnpackedImage, CAMERA_NUM_PX);
 
     return 0;
 }
@@ -2369,11 +2369,11 @@ int imageTransfer(uint16_t* pUnpackedImage)
     if (verbose) {
         printf("imageTransfer: Unpacking image bytes: %ld into local buffer of "
             "size %ld\n", buffer.memorySize,
-            (sizeof(uint16_t) * CAMERA_WIDTH * CAMERA_HEIGHT));
+            (sizeof(uint16_t) * CAMERA_NUM_PX));
     }
 
     unpack_mono12((uint16_t *)buffer.memoryAddress, pUnpackedImage,
-        CAMERA_WIDTH * CAMERA_HEIGHT);
+        CAMERA_NUM_PX);
 
     // ---------------------------------------------------------------------- //
     // Metadata handling
@@ -2432,7 +2432,7 @@ void makeMask(uint16_t * ib, int i0, int j0, int i1, int j1, int x0, int y0,
     static int num_p = 0, num_alloc = 0;
 
     if (first_time) {
-        mask = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, 1);
+        mask = calloc(CAMERA_NUM_PX, 1);
         x_p = calloc(100, sizeof(int));
         y_p = calloc(100, sizeof(int));
         num_alloc = 100;
@@ -2597,8 +2597,8 @@ void boxcarFilterImage(uint16_t * ib, int i0, int j0, int i1, int j1, int r_f,
     static uint64_t * ibc1 = NULL;
 
     if (first_time) {
-        nc = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, 1);
-        ibc1 = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, sizeof(uint64_t));
+        nc = calloc(CAMERA_NUM_PX, 1);
+        ibc1 = calloc(CAMERA_NUM_PX, sizeof(uint64_t));
         first_time = 0;
     }
 
@@ -2653,33 +2653,6 @@ void boxcarFilterImage(uint16_t * ib, int i0, int j0, int i1, int j1, int r_f,
 }
 
 
-// /**
-//  * @brief Function that will do an approximate 3x3 Gaussian smoothing of an image.
-//  * @details If you want more smoothing, you should iteratively apply this
-//  * filter. sigma^2 = sigma_1^2 + sigma_2^2, sigma_1 = sigma_2
-//  * => sigma = sqrt(2) sigma_1
-//  * 
-//  * @param ib "input buffer" the input image with 12 bit depth, stored in 16bit ints
-//  * @param i0 starting column for filtering
-//  * @param j0 starting row for filtering
-//  * @param i1 ending column for filtering
-//  * @param j1 ending row for filtering
-//  * @param r_f boxcar filter radius
-//  * @param filtered_image output image
-//  */
-// void gaussianFilter3x3(
-//     uint16_t* inputBuffer,
-//     unsigned char* mask,
-//     float* filteredImage)
-// {
-//     // A Gaussian NxN = 3x3 kernel with sigma = (N - 1) / 4 = .5
-//     uint8_t kernelSize = 9;
-//     float kernel[9] = {1./16., 2./16., 1./16., 2./16., 4./16., 2./16., 1./16., 2./16., 1./16.};
-//     doConvolution(inputBuffer, CAMERA_WIDTH, CAMERA_WIDTH * CAMERA_HEIGHT, mask,
-//             kernel, kernelSize, filteredImage);
-// }
-
-
 /* Function to find the blobs in an image.
 ** Inputs: The original image prior to processing (input_biffer), the dimensions
 ** of the image (w & h) pointers to arrays for the x coordinates, y coordinates,
@@ -2699,8 +2672,8 @@ int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x,
 
     // allocate the proper amount of storage space to start
     if (first_time) {
-        ic = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, sizeof(double));
-        ic2 = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, sizeof(double));
+        ic = calloc(CAMERA_NUM_PX, sizeof(double));
+        ic2 = calloc(CAMERA_NUM_PX, sizeof(double));
         first_time = 0;
     }
   
@@ -3078,6 +3051,8 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 
 
 // int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm* tm_info, uint16_t* output_buffer) {
+//     printf("Running contrast detection AF.\n");
+
 //     // Housekeeping
 //     static FILE * af_file = NULL;
 //     static char af_filename[256];
@@ -3093,42 +3068,23 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //     char focusStrCmd[10] = {'\0'};
 
 //     // Contrast detect algorithm parameters
-//     float sobelKernelx[9] = {-1., 0., 1., -2., 0., 2., -1., 0., 1.};
 //     uint16_t kernelSize = 9;
+//     float sobelKernelX[9] = {-1., 0., 1., -2., 0., 2., -1., 0., 1.};
+//     // astropy.convolution.Gaussian2DKernel(x_stddev=1.27, y_stddev=1.27, x_size=3, y_size=3),
+//     // matched filter for star PSF FWHM = 3 px, normalized kernel
+//     float gaussian4px[9] = {0.08839674, 0.12052241, 0.08839674, 0.12052241,
+//         0.16432339, 0.12052241, 0.08839674, 0.12052241, 0.08839674};
 
 //     // Initialize focuser and AF logging
 //     int bestFocusPos = all_camera_params->focus_position;
-//     double bestFocusGrad = 0;
+//     double bestFocusSobel = 0;
 
-//     printf("Running contrast detection AF.\n");
 //     all_camera_params->begin_auto_focus = 0;
-
-//     // check that end focus position is at least 25 less than max focus
-//     // position
-//     if (all_camera_params->max_focus_pos - all_camera_params->end_focus_pos 
-//         < 25) {
-//         printf("Adjusting end focus position to be 25 less than max focus "
-//                 "position.\n");
-//         all_camera_params->end_focus_pos = all_camera_params->max_focus_pos 
-//                                             - 25;
-//     }
-
-//     // check that beginning focus position is at least 25 above min focus
-//     // position
-//     if (all_camera_params->start_focus_pos - all_camera_params->min_focus_pos
-//         < 25) {
-//         printf("Adjusting beginning focus position to be 25 more than min "
-//                 "focus position.\n");
-//         all_camera_params->start_focus_pos = all_camera_params->min_focus_pos
-//                                             + 25;
-//     }
 
 //     if (af_file != NULL) {
 //         fclose(af_file);
 //         af_file = NULL;
 //     }
-
-    
 //     // clear previous contents of auto-focusing file (open in write mode)
 //     strftime(
 //         af_filename,
@@ -3139,34 +3095,39 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //     if (verbose) {
 //         printf("Opening auto-focusing text file: %s\n", af_filename);
 //     }
-
 //     if ((af_file = fopen(af_filename, "w")) == NULL) {
 //         fprintf(stderr, "Could not open auto-focusing file: %s.\n", 
 //                 strerror(errno));
+//         all_camera_params->focus_mode = 0;
 //         return -1;
 //     }
 
-//     // ECM: not sure if this is relevant for my alg - may remove
-//     // turn dynamic hot pixels off to avoid removing blobs during focusing
-//     prev_dynamic_hp = all_blob_params.dynamic_hot_pixels;
-//     if (verbose) {
-//         printf("Turning dynamic hot pixel finder off for auto-focusing.\n");
+//     // check that end focus position is at least 25 less than max focus
+//     // position
+//     if (all_camera_params->max_focus_pos - all_camera_params->end_focus_pos 
+//         < 25) {
+//         printf("Adjusting end focus position to be 25 less than max focus "
+//                 "position.\n");
+//         all_camera_params->end_focus_pos = all_camera_params->max_focus_pos 
+//                                             - 25;
 //     }
-//     all_blob_params.dynamic_hot_pixels = 0;
-    
-//     // link the auto-focusing txt file to Kst for plotting
-//     unlink("/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
-//     symlink(af_filename, 
-//             "/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
-
+//     // check that beginning focus position is at least 25 above min focus
+//     // position
+//     if (all_camera_params->start_focus_pos - all_camera_params->min_focus_pos
+//         < 25) {
+//         printf("Adjusting beginning focus position to be 25 more than min "
+//                 "focus position.\n");
+//         all_camera_params->start_focus_pos = all_camera_params->min_focus_pos
+//                                             + 25;
+//     }
 //     // get to beginning of auto-focusing range
 //     if (beginAutoFocus() < 1) {
 //         printf("Error beginning auto-focusing process. Skipping to taking "
 //                 "observing images...\n");
-
 //         // return to default focus position
 //         if (defaultFocusPosition() < 1) {
 //             printf("Error moving to default focus position.\n");
+//             all_camera_params->focus_mode = 0;
 //             return -1;
 //         }
 
@@ -3206,50 +3167,47 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //         if (imageCapture() < 0) {
 //             fprintf(stderr, "Could not complete image capture: %s.\n", 
 //                 strerror(errno));
+//             all_camera_params->focus_mode = 0;
+//             return -1;
 //         }
 //         taking_image = 0;
 
-//         gettimeofday(&tv, NULL);
-//         photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
-//         all_astro_params.photo_time = photo_time;
+//         if (imageTransfer(unpacked_image) < 0) {
+//             fprintf(stderr, "Could not complete image transfer: %s.\n", 
+//             strerror(errno));
+//             all_camera_params->focus_mode = 0;
+//             return -1;
+//         }
 
-//         #ifndef IDS_PEAK
-//         if (imageTransfer(unpacked_image) < 0) {
-//             fprintf(stderr, "Could not complete image transfer: %s.\n", 
-//             strerror(errno));
-//             return -1;
-//         }
-//         #else
-//         if (imageTransfer(unpacked_image) < 0) {
-//             fprintf(stderr, "Could not complete image transfer: %s.\n", 
-//             strerror(errno));
-//             return -1;
-//         }
-//         #endif
+//         // We don't save individual AF images in order to maximize speed,
+//         // thereby minimizing the possible change in image levels and star field
+//         // content across a run.
 
 //         // make kst display the filtered image
-//         memcpy(output_buffer, unpacked_image, CAMERA_WIDTH*CAMERA_HEIGHT * sizeof(uint16_t));
+//         memcpy(output_buffer, unpacked_image, CAMERA_NUM_PX * sizeof(uint16_t));
 //         // pointer for transmitting to user should point to where image is in memory
 //         // camera_raw = output_buffer;
 
+//         // convolution needs floats
+//         for (unsigned int i = 0; i < CAMERA_NUM_PX; i++) {
+//             imageFloatIn[i] = (float)unpacked_image[i];
+//         }
 
-//         // ECM N.B.: uEye API has functions to calc sharpness in hardware
-//         // but they are not supported on our camera. I think they're only
-//         // supported on AF-enabled camera models. I implemented it and got
-//         // all 0s back. So we do it in software.
+//         // Used for normalizing the contrast metric
+//         uint32_t imageNumPix = CAMERA_NUM_PX;
+//         float imageAverage = averageFloat(imageFloatIn, imageNumPix);
 
-//         // Used for edge cases in convolution and later for normalizing
-//         // the contrast metric
-//         uint32_t imageNumPix = CAMERA_WIDTH * CAMERA_HEIGHT;
-//         uint16_t imageAverage = average(unpacked_image, imageNumPix);
+//         // Matched filter to optimize SNR for a focused star
+//         doConvolution(imageFloatIn, CAMERA_WIDTH, imageNumPix, mask,
+//             gaussian4px, kernelSize, imageFloatOut);
 
 //         // Sobel filter for contrast detection
 //         // Usually, you want to judge sharpness based on the magnitude of
 //         // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
 //         // Because we assume stars are mostly round, we can just take
 //         // either and save a convolution.
-//         doConvolution(unpacked_image, CAMERA_WIDTH, imageNumPix, mask,
-//             sobelKernelx, kernelSize, sobelResult);
+//         doConvolution(imageFloatOut, CAMERA_WIDTH, imageNumPix, mask,
+//             sobelKernelX, kernelSize, sobelResult);
 //         // Let the sharpness metric be the sum of squared gradients, as
 //         // estimated by the Sobel operator
 //         double sobelMetric = 0.0;
@@ -3266,8 +3224,8 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //         }
 
 //         // Save off commanded position and max gradient in image
-//         if (sobelMetric >= bestFocusGrad) {
-//             bestFocusGrad = sobelMetric;
+//         if (sobelMetric >= bestFocusSobel) {
+//             bestFocusSobel = sobelMetric;
 //             bestFocusPos = (int32_t)all_camera_params->focus_position;
 //         }
 
@@ -3282,17 +3240,16 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //                 all_camera_params->focus_position);
 //         fflush(af_file);
 
-//         send_data = 1;
 //         // if clients are listening and we want to guarantee data is sent to
 //         // them before continuing with auto-focusing, wait until data_sent
 //         // confirmation. If there are no clients, no need to slow down auto-
 //         // focusing
+//         send_data = 1;
 //         if (num_clients > 0) {
 //             while (!telemetry_sent) {
 //                 if (verbose) {
 //                     printf("> Waiting for data to send to client...\n");
 //                 }
-
 //                 usleep(10000);
 //             }
 //         }
@@ -3314,10 +3271,6 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //         numFocusPos++;
 //         hasGoneForward = 1;
 //     }
-
-//     // Necessary to avoid going into legacy autofocus mode if we drop out
-//     // due to too many AF attempts.
-//     all_camera_params->focus_mode = 0;
 
 //     if (verbose) {
 //         printf("Autofocus concluded with %d tries remaining.\n", remainingFocusPos);
@@ -3344,12 +3297,13 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //         // return to default focus position
 //         if (defaultFocusPosition() < 1) {
 //             printf("Error moving to default focus position.\n");
-//             closeCamera();
+//             all_camera_params->focus_mode = 0;
 //             return -1;
 //         }
 
 //         // abort auto-focusing process
 //         all_camera_params->focus_mode = 0;
+//         return -1;
 //     }
 //     // and THEN move to the optimal pos.
 //     sprintf(focusStrCmd, "mf %i\r", 
@@ -3360,17 +3314,9 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 //     fclose(af_file);
 //     af_file = NULL;
 
-//     // turn dynamic hot pixels back to whatever user had specified
-//     if (verbose) {
-//         printf("> Auto-focusing finished, so restoring dynamic hot "
-//                 "pixels to previous value...\n");
-//     }
-
-//     all_blob_params.dynamic_hot_pixels = prev_dynamic_hp;
-//     if (verbose) {
-//         printf("Now all_blob_params.dynamic_hot_pixels = %d\n", 
-//                 all_blob_params.dynamic_hot_pixels);
-//     }
+//     // Necessary to avoid going into legacy autofocus mode if we drop out
+//     // due to too many AF attempts.
+//     all_camera_params->focus_mode = 0;
 //     return 0;
 // }
 
@@ -3449,7 +3395,7 @@ int doCameraAndAstrometry(void)
 
     if (first_time) {
         solveState = INIT;
-        output_buffer = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, sizeof(uint16_t));
+        output_buffer = calloc(CAMERA_NUM_PX, sizeof(uint16_t));
         if (output_buffer == NULL) {
             fprintf(stderr, "Error allocating output buffer: %s.\n", 
                     strerror(errno));
@@ -3719,10 +3665,10 @@ int doCameraAndAstrometry(void)
     }
 
     // make kst display the filtered image 
-    memcpy(output_buffer, unpacked_image, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
+    memcpy(output_buffer, unpacked_image, CAMERA_NUM_PX * sizeof(uint16_t));
 
     // pass off the image bytes for sending to clients
-    memcpy(camera_raw, output_buffer, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
+    memcpy(camera_raw, output_buffer, CAMERA_NUM_PX * sizeof(uint16_t));
 
     // get current time right after exposure
     if (clock_gettime(CLOCK_REALTIME, &camera_tp_beginning) == -1) {

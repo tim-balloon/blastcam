@@ -3,9 +3,9 @@
 #include <stdint.h>
 #include <stddef.h>
 
-uint16_t average(uint16_t* data, uint32_t n);
+float averageFloat(float* data, uint32_t n);
 void doConvolution(
-    uint16_t* imageBuffer,
+    float* imageBuffer,
     uint16_t imageWidth,
     uint32_t imageNumPix,
     unsigned char* mask,

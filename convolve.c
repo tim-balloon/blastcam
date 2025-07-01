@@ -7,16 +7,36 @@
  * @param n length of data array and denominator in mean
  * @returns The truncated floating point mean
  */
-uint16_t average(uint16_t* data, uint32_t n)
+uint16_t averageUnsigned(uint16_t* data, uint32_t n)
 {
     float summed = 0.0;
     if (n < 1U) {
         return 0U;
     }
-    for (uint32_t j = 1; j <= n;j ++ ) {
+    for (uint32_t j = 1; j <= n; j++) {
         summed += data[j];
     }
     return (uint16_t)truncf(summed / n);
+}
+
+/**
+ * @brief first moment of an array
+ * @param data pointer to array of length n
+ * @param n length of data array and denominator in mean
+ * @returns floating point mean
+ */
+float averageFloat(float* data, uint32_t n)
+{
+    // ASSUMPTION: input values are limited to plausible ADU values, i.e. less
+    // than 2^16 - 1, to avoid overflow of float during sum
+    float summed = 0.0;
+    if (n < 1U) {
+        return 0.0;
+    }
+    for (uint32_t j = 1; j <= n; j++) {
+        summed += data[j];
+    }
+    return summed / n;
 }
 
 
@@ -35,11 +55,11 @@ uint16_t average(uint16_t* data, uint32_t n)
  * `pixelIndex`
  */
 void getNeighborhoodNearest(
-    uint16_t* imageBuffer,
+    float* imageBuffer,
     uint32_t pixelIndex,
     uint16_t imageWidth,
     uint32_t imageNumPix,
-    uint16_t* neighborhood)
+    float* neighborhood)
 {
     // Clawing back a couple of instructions due to repeated ops
     int64_t above = pixelIndex + imageWidth;
@@ -193,18 +213,18 @@ void getNeighborhoodNearest(
  * here, you heathen.
  * @return the result of the convolution
  */
-float convolve9(uint16_t* array, float* kernel)
+float convolve9(float* array, float* kernel)
 {
     return (
-        (float)array[0] * kernel[8] +
-        (float)array[1] * kernel[7] +
-        (float)array[2] * kernel[6] +
-        (float)array[3] * kernel[5] +
-        (float)array[4] * kernel[4] +
-        (float)array[5] * kernel[3] +
-        (float)array[6] * kernel[2] +
-        (float)array[7] * kernel[1] +
-        (float)array[8] * kernel[0]
+        array[0] * kernel[8] +
+        array[1] * kernel[7] +
+        array[2] * kernel[6] +
+        array[3] * kernel[5] +
+        array[4] * kernel[4] +
+        array[5] * kernel[3] +
+        array[6] * kernel[2] +
+        array[7] * kernel[1] +
+        array[8] * kernel[0]
     );
 }
 
@@ -228,7 +248,7 @@ float convolve9(uint16_t* array, float* kernel)
  * @param[out] imageResult 
  */
 void doConvolution(
-    uint16_t* imageBuffer,
+    float* imageBuffer,
     uint16_t imageWidth,
     uint32_t imageNumPix,
     unsigned char* mask,
@@ -237,7 +257,7 @@ void doConvolution(
     float* imageResult)
 {
     // statically allocate this array for (re)use throughout the run
-    uint16_t neighborhood[9] = {0};
+    float neighborhood[9] = {0.0};
     for (uint32_t i = 0; i < imageNumPix; i++) {
         getNeighborhoodNearest(imageBuffer, i, imageWidth, imageNumPix, neighborhood);
         imageResult[i] = convolve9(neighborhood, kernel) * (float)(mask[i]);

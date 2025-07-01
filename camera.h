@@ -27,6 +27,7 @@ extern HIDS camera_handle;
 #define MIN_PS         6.0  // [arcsec/px]
 #define MAX_PS         7.0  // [arcsec/px]
 #endif
+#define CAMERA_NUM_PX (CAMERA_WIDTH * CAMERA_HEIGHT)
 #define CAMERA_MARGIN  0		 // [px]
 #define CAMERA_MAX_PIXVAL 4095 //  2**12
 #define MIN_BLOBS 4

@@ -6,9 +6,13 @@ project ("commands"
 )
 
 # If you install ids peak via the tar archive, you'll need to point to it here
-set(CMAKE_PREFIX_PATH "/home/starcam/ids-peak-with-ueyetl_2.16.0.0-457_amd64/lib/")
+set(CMAKE_PREFIX_PATH "/opt/ids-peak-with-ueyetl_2.16.0.0-457_amd64/lib/")
 set(CMAKE_C_FLAGS_RELEASE "-O3")
 set(CMAKE_C_FLAGS_DEBUG "-O0 -fno-omit-frame-pointer -ggdb -g3")
+
+# help find our shared libraries at runtime, after install
+set(CMAKE_INSTALL_RPATH ${CMAKE_PREFIX_PATH})
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # Create target executable
 add_executable (${PROJECT_NAME}
@@ -71,9 +75,6 @@ target_link_libraries (${PROJECT_NAME}
 # required to conditionally compile starcam code until we remove dependency on
 # ueye old api
 add_compile_definitions(IDS_PEAK)
-
-# help find our shared libraries at runtime, after make install
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # Add postbuild step to copy ids_peak_comfort_c dependencies
 ids_peak_comfort_c_deploy(${PROJECT_NAME})
