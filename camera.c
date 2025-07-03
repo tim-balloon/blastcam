@@ -1611,9 +1611,10 @@ int setCameraParams(void)
 
     // Set gamma to neutral. This is a formality, should already be 1.0
     double defaultGamma = 1.0;
+    peak_status status = PEAK_STATUS_SUCCESS;
     peak_access_status accessStatus = peak_Gamma_GetAccessStatus(hCam);
     if (PEAK_IS_WRITEABLE(accessStatus)) {
-        peak_status status = peak_Gamma_Set(hCam, defaultGamma);
+        status = peak_Gamma_Set(hCam, defaultGamma);
         if (!checkForSuccess(status)) {
             fprintf(stderr, "Setting gamma failed. Continuing.\n");
         }
@@ -2409,7 +2410,7 @@ int imageTransfer(uint16_t* pUnpackedImage)
 
 
 /**
- * @brief Measure image sharpness without image transfer
+ * @brief Measure image sharpness using the peak IPL
  * 
  * @param pSharpness to double to store sharpness value
  * @return int status: -1 for failure, 0 otherwise.
@@ -2510,6 +2511,41 @@ int measureSharpness(double* pSharpness)
     DISPLAY_DELTA("sharpness time", DELTA(tend, tstart));
 
     return ret;
+}
+
+
+/**
+ * @brief Ensures peak IPL hot pixel compensation is on, sets it to maximum, and
+ * re-makes the hot pixel list.
+ * 
+ * @return int -1 if failed, 0 otherwise
+ */
+int renewCameraHotPixels(void)
+{
+    START(tstart);
+    if (verbose) {
+        printf("renewCameraHotPixels: making new internal camera hot pixel "
+            "mask.\n");
+    }
+    // Enable hardware hot pixel compensation
+    peak_status status = peak_IPL_HotpixelCorrection_Enable(hCam, PEAK_TRUE);
+    if (!checkForSuccess(status)) {
+        fprintf(stderr, "renewCameraHotPixels: Enabling hot pixel correction"
+            " failed.\n");
+        return -1;
+    }
+    // Set sensitivity level. This also resets the hot pixel list, triggering
+    // the camera to re-find hot pixels.
+    peak_hotpixel_correction_sensitivity sens = PEAK_HOTPIXEL_CORRECTION_SENSITIVITY_LEVEL_5; // max
+    status = peak_IPL_HotpixelCorrection_Sensitivity_Set(hCam, sens);
+    if (!checkForSuccess(status)) {
+        fprintf(stderr, "renewCameraHotPixels: Setting hot pixel correction "
+            "sensitivity failed.\n");
+        return -1;
+    }
+    STOP(tend);
+    DISPLAY_DELTA("||||||||cam HP", DELTA(tend, tstart));
+    return 0;
 }
 #endif
 
@@ -3624,6 +3660,17 @@ int doCameraAndAstrometry(void)
         symlink(af_filename, 
                 "/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
     }
+
+    #ifdef IDS_PEAK
+    // If the user has triggered a new hot pixel mask, or want to be using 
+    // dynamic hot pixel masking, re-make the mask internal hot pixel list
+    // before capture.
+    if (all_blob_params.make_static_hp_mask || all_blob_params.dynamic_hot_pixels) {
+        if (renewCameraHotPixels() < 0) {
+            fprintf(stderr, "Could not re-make internal hot pixel mask.\n");
+        }
+    }
+    #endif
 
     solveState = IMAGE_CAP;
     taking_image = 1;
