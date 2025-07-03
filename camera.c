@@ -2406,6 +2406,111 @@ int imageTransfer(uint16_t* pUnpackedImage)
 
     return ret;
 }
+
+
+/**
+ * @brief Measure image sharpness without image transfer
+ * 
+ * @param pSharpness to double to store sharpness value
+ * @return int status: -1 for failure, 0 otherwise.
+ */
+int measureSharpness(double* pSharpness)
+{
+    START(tstart);
+    int ret = 0;
+    peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
+    double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
+    getExposureTime(&actualExpTimeMs);
+    uint32_t three_frame_times_timeout_ms = (uint32_t)(3000.0 * actualExpTimeMs + 0.5);
+
+    if (verbose) {
+        printf("measureSharpness: Waiting for frame...\n");
+    }
+
+    // ---------------------------------------------------------------------- //
+    // Actual data transfer
+    // ---------------------------------------------------------------------- //
+    // wait for image transfer
+    peak_status status = peak_Acquisition_WaitForFrame(hCam,
+        three_frame_times_timeout_ms, &hFrame);
+    if(status == PEAK_STATUS_TIMEOUT) {
+        fprintf(stderr, "ERROR: WaitForFrame timed out after 3 frame times.\n");
+        return -1;
+    } else if(status == PEAK_STATUS_ABORTED) {
+        fprintf(stderr, "ERROR: WaitForFrame aborted by camera.\n");
+        return -1;
+    } else if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: WaitForFrame failed.\n");
+        return -1;
+    }
+
+    // At this point we successfully got a frame handle. We need to release it
+    // when done!
+    if(peak_Frame_IsComplete(hFrame) == PEAK_FALSE) {
+        printf("WARNING: Incomplete frame transfer.\n");
+    }
+
+    if (verbose) {
+        printf("imageTransfer: Got frame, unpacking...\n");
+    }
+
+    // Only unpack to global application image memory if there's a GUI client
+    // who might receive it
+    if (num_clients > 0) {
+        // get image from frame handle
+        peak_buffer buffer = {NULL, 0, NULL};
+        status = peak_Frame_Buffer_Get(hFrame, &buffer);
+        if(!checkForSuccess(status)) {
+            fprintf(stderr, "ERROR: Failed to get buffer from frame.\n");
+            return -1;
+        }
+        unpack_mono12((uint16_t *)buffer.memoryAddress, unpacked_image,
+            CAMERA_NUM_PX);
+    }
+
+    // measure sharpness
+    uint32_t border = 4U; // blank pixels around active array
+    peak_position offset = {
+        .x = border,
+        .y = border
+    };
+    peak_size size = {
+        .width = CAMERA_WIDTH,
+        .height = CAMERA_HEIGHT
+    };
+    peak_roi roi = {
+        .offset = offset,
+        .size = size
+    };
+    status = peak_ROI_Get(hCam, &roi);
+    if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: peak_ROI_Get failed.\n");
+    }
+    // PEAK_SHARPNESS_ALGORITHM_SOBEL
+    // PEAK_SHARPNESS_ALGORITHM_TENENGRAD
+    // PEAK_SHARPNESS_ALGORITHM_MEAN_SCORE
+    // PEAK_SHARPNESS_ALGORITHM_HISTOGRAM_VARIANCE
+    // required to avoid error with bad ROI size. Why is asking for the ROI we
+    // just queried in error? God only knows
+    roi.size.width = roi.size.width - border;
+    roi.size.height = roi.size.height - border;
+    status = peak_IPL_Sharpness_Measure(hFrame, roi,
+        PEAK_SHARPNESS_ALGORITHM_SOBEL, pSharpness);
+    if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: peak_IPL_Sharpness_Measure failed.\n");
+        ret = -1;
+    }
+
+    status = peak_Frame_Release(hCam, hFrame);
+    if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: Frame_Release failed.\n");
+        ret = -1;
+    }
+    STOP(tend);
+    DISPLAY_DELTA("sharpness time", DELTA(tend, tstart));
+
+    return ret;
+}
 #endif
 
 
@@ -3086,7 +3191,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
 
     // Initialize focuser and AF logging
     int bestFocusPos = all_camera_params->focus_position;
-    double bestFocusSobel = 0;
+    double bestFocusSharpness = 0;
 
     all_camera_params->begin_auto_focus = 0;
 
@@ -3181,110 +3286,32 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         }
         taking_image = 0;
 
-        if (imageTransfer(unpacked_image) < 0) {
-            fprintf(stderr, "Could not complete image transfer: %s.\n", 
+        double sharpness = 0.0;
+        if (measureSharpness(&sharpness) < 0) {
+            fprintf(stderr, "Could not complete sharpness measurement: %s.\n", 
             strerror(errno));
             all_camera_params->focus_mode = 0;
             return -1;
-        }
+        };
+
         // We don't save individual AF images in order to maximize speed,
         // thereby minimizing the possible change in image levels and star field
         // content across a run.
 
-        // convolution needs floats
-        for (unsigned int i = 0; i < CAMERA_NUM_PX; i++) {
-            imageFloatIn[i] = (float)unpacked_image[i];
-        }
-   
-        // Used for normalizing the contrast metric
-        uint32_t imageNumPix = CAMERA_NUM_PX;
-        float imageAverage = 0.0;
-        float imageMax = 0.0;
-        uint32_t imageMaxIdx = 0U;
-        // TODO(evanmayer): check retval
-        imageStats(imageFloatIn, imageNumPix, &imageAverage, &imageMax,
-            &imageMaxIdx);
-
-        // Matched filter to optimize SNR for a focused star
-        #ifdef FOCUS_ROI
-        // Determine an ROI for this image: focus on the max value, which will
-        // likely be a star as we approach focus
-        uint32_t ROInumPixRead = CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE;
-        uint8_t ROIsideLengthRead = CAMERA_FOCUS_ROI_SIDE;
-        // TODO(evanmayer): check retval
-        readROI(imageFloatIn, imageMaxIdx, CAMERA_FOCUS_ROI_SIDE, CAMERA_WIDTH, 
-            CAMERA_NUM_PX, imageROIin, &ROInumPixRead, &ROIsideLengthRead);
-
-        // Write a FITS file for debug
-        char FITSfilename[256] = "";
-        // Create the output filename
-        strftime(FITSfilename, sizeof(FITSfilename),
-            "/home/starcam/Desktop/TIMSC/img/"
-            "AF_ROI_image_%Y-%m-%d_%H-%M-%S.fits", tm_info);
-        for (unsigned int i = 0; i < ROInumPixRead; i++) {
-            imageROIwrite[i] = (uint16_t)truncf(imageROIin[i]);
-        }
-        int FITSstatus = writeImage(FITSfilename, imageROIwrite, ROIsideLengthRead,
-            ROInumPixRead / ROIsideLengthRead, &default_metadata);
-        if (0 != FITSstatus) {
-            fprintf(stderr, "ERROR: ROI FITS write failed.\n");
-        }
-
-        doConvolution(imageROIin, ROIsideLengthRead, ROInumPixRead, mask,
-            gaussian4px, kernelSize, imageROIout);
-        #else
-        doConvolution(imageFloatIn, CAMERA_WIDTH, imageNumPix, mask,
-            gaussian4px, kernelSize, imageFloatOut);
-        #endif
-
-        // Sobel filter for contrast detection
-        // Usually, you want to judge sharpness based on the magnitude of
-        // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
-        // Because we assume stars are mostly round, we can just take
-        // either and save a convolution.
-        #ifdef FOCUS_ROI
-        doConvolution(imageROIout, ROIsideLengthRead, ROInumPixRead, mask,
-            sobelKernelY, kernelSize, imageROIsobel);
-        #else
-        doConvolution(imageFloatOut, CAMERA_WIDTH, imageNumPix, mask,
-            sobelKernelY, kernelSize, sobelResult);
-        #endif
-        // Let the sharpness metric be the sum of squared gradients, as
-        // estimated by the Sobel operator
-        double sobelMetric = 0.0;
-        #ifdef FOCUS_ROI
-        for (uint32_t i = 0; i < ROInumPixRead; i++) {
-            float result = imageROIsobel[i];
-            sobelMetric += result * result;
-        }
-        #else
-        for (uint32_t i = 0; i < imageNumPix; i++) {
-            float result = sobelResult[i];
-            sobelMetric += result * result;
-        }
-        #endif
-
-        // We normalize by something proportional to the shot noise in the
-        // image to handle cases where the shot noise, and thus the sum of
-        // squared gradients, is changing rapidly during an AF run
-        if (imageAverage > 1) {
-            sobelMetric /= imageAverage;
-        }
-
         // Save off commanded position and max gradient in image
-        if (sobelMetric >= bestFocusSobel) {
-            bestFocusSobel = sobelMetric;
+        if (sharpness >= bestFocusSharpness) {
+            bestFocusSharpness = sharpness;
             bestFocusPos = (int32_t)all_camera_params->focus_position;
         }
 
         // Save off data in AF logfile
-        // sobelMetric is gradient sharpness metric, not flux,
-        // but same diff...har har
-        all_camera_params->flux = sobelMetric;
+        all_camera_params->flux = sharpness;
 
-        printf("(*) Sobel metric in image for focus %d is %lf.\n",
-            all_camera_params->focus_position, sobelMetric);
-        fprintf(af_file, "%.6lf\t%5d\n", sobelMetric,
+        if (verbose) {
+            printf("(*) Sharpness metric in image for focus %d is %lf.\n",
+            all_camera_params->focus_position, sharpness);
+        }
+        fprintf(af_file, "%.6lf\t%5d\n", sharpness,
                 all_camera_params->focus_position);
         fflush(af_file);
 
@@ -3298,7 +3325,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
                 if (verbose) {
                     printf("> Waiting for data to send to client...\n");
                 }
-                usleep(1000);
+                usleep(10000);
             }
         }
         send_data = 0;
