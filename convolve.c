@@ -160,7 +160,7 @@ int readROI(
         ROIidx++;
     }
     *pROInumPixRead = ROIidx;
-    *pROIsideLengthRead = (colBottomRight - colTopLeft >= 0) ? colBottomRight - colTopLeft : 0U;
+    *pROIsideLengthRead = (colBottomRight - colTopLeft >= 0) ? colBottomRight - colTopLeft + 1 : 0U;
     return 0;
 }
 

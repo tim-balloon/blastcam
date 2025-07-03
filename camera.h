@@ -29,7 +29,7 @@ extern HIDS camera_handle;
 #endif
 #define CAMERA_NUM_PX (CAMERA_WIDTH * CAMERA_HEIGHT)
 // if defined, focus mode will use ROI instead of whole image. 1000x faster.
-#define FOCUS_ROI
+// #define FOCUS_ROI
 // AF ROI size is a tradeoff of processing time, feature size, and diluting
 // the SNR of edge finding with a Sobel filter. Prefer small ROIs. ROIs that are
 // even will be promoted to next odd ROI size.

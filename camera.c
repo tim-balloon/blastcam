@@ -124,6 +124,7 @@ float imageFloatIn[CAMERA_NUM_PX] = {0.0};
 #ifdef FOCUS_ROI
 float imageROIin[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
 float imageROIout[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
+uint16_t imageROIwrite[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
 float imageROIsobel[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
 #else
 float imageFloatOut[CAMERA_NUM_PX] = {0.0};
@@ -3213,6 +3214,22 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         // TODO(evanmayer): check retval
         readROI(imageFloatIn, imageMaxIdx, CAMERA_FOCUS_ROI_SIDE, CAMERA_WIDTH, 
             CAMERA_NUM_PX, imageROIin, &ROInumPixRead, &ROIsideLengthRead);
+
+        // Write a FITS file for debug
+        char FITSfilename[256] = "";
+        // Create the output filename
+        strftime(FITSfilename, sizeof(FITSfilename),
+            "/home/starcam/Desktop/TIMSC/img/"
+            "AF_ROI_image_%Y-%m-%d_%H-%M-%S.fits", tm_info);
+        for (unsigned int i = 0; i < ROInumPixRead; i++) {
+            imageROIwrite[i] = (uint16_t)truncf(imageROIin[i]);
+        }
+        int FITSstatus = writeImage(FITSfilename, imageROIwrite, ROIsideLengthRead,
+            ROInumPixRead / ROIsideLengthRead, &default_metadata);
+        if (0 != FITSstatus) {
+            fprintf(stderr, "ERROR: ROI FITS write failed.\n");
+        }
+
         doConvolution(imageROIin, ROIsideLengthRead, ROInumPixRead, mask,
             gaussian4px, kernelSize, imageROIout);
         #else
