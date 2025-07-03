@@ -120,9 +120,15 @@ int prev_dynamic_hp;
 
 // For realtime contrast AF
 // Have to declare here or we'd run out of stack space and mysterious-looking SEGFAULT
-float imageFloatIn[CAMERA_NUM_PX] = {0};
-float imageFloatOut[CAMERA_NUM_PX] = {0};
-float sobelResult[CAMERA_NUM_PX] = {0};
+float imageFloatIn[CAMERA_NUM_PX] = {0.0};
+#ifdef FOCUS_ROI
+float imageROIin[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
+float imageROIout[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
+float imageROIsobel[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
+#else
+float imageFloatOut[CAMERA_NUM_PX] = {0.0};
+float sobelResult[CAMERA_NUM_PX] = {0.0};
+#endif
 
 /* Blob parameters global structure (defined in camera.h) */
 struct blob_params all_blob_params = {
@@ -3067,7 +3073,11 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
 
     // Contrast detect algorithm parameters
     uint16_t kernelSize = 9;
-    float sobelKernelX[9] = {-1., 0., 1., -2., 0., 2., -1., 0., 1.};
+    // We use the sobel Y kernel because we assume 2 things:
+    // * the sensor x-axis is aligned with the horizon
+    // * we scan primarily in azimuth, so any blurring will primarily be in x,
+    //   making the Y-gradient a more reliable metric than x.
+    float sobelKernelY[9] = {-1., -2., -1., 0., 0., 0., 1., 2., 1.};
     // astropy.convolution.Gaussian2DKernel(x_stddev=1.27, y_stddev=1.27, x_size=3, y_size=3),
     // matched filter for star PSF FWHM = 3 px, normalized kernel
     float gaussian4px[9] = {0.08839674, 0.12052241, 0.08839674, 0.12052241,
@@ -3176,43 +3186,66 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
             all_camera_params->focus_mode = 0;
             return -1;
         }
-
         // We don't save individual AF images in order to maximize speed,
         // thereby minimizing the possible change in image levels and star field
         // content across a run.
-
-        // make kst display the filtered image
-        memcpy(output_buffer, unpacked_image, CAMERA_NUM_PX * sizeof(uint16_t));
-        // pass off the image bytes for sending to clients
-        memcpy(camera_raw, output_buffer, CAMERA_NUM_PX * sizeof(uint16_t));
 
         // convolution needs floats
         for (unsigned int i = 0; i < CAMERA_NUM_PX; i++) {
             imageFloatIn[i] = (float)unpacked_image[i];
         }
-
+   
         // Used for normalizing the contrast metric
         uint32_t imageNumPix = CAMERA_NUM_PX;
-        float imageAverage = averageFloat(imageFloatIn, imageNumPix);
+        float imageAverage = 0.0;
+        float imageMax = 0.0;
+        uint32_t imageMaxIdx = 0U;
+        // TODO(evanmayer): check retval
+        imageStats(imageFloatIn, imageNumPix, &imageAverage, &imageMax,
+            &imageMaxIdx);
 
         // Matched filter to optimize SNR for a focused star
+        #ifdef FOCUS_ROI
+        // Determine an ROI for this image: focus on the max value, which will
+        // likely be a star as we approach focus
+        uint32_t ROInumPixRead = CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE;
+        uint8_t ROIsideLengthRead = CAMERA_FOCUS_ROI_SIDE;
+        // TODO(evanmayer): check retval
+        readROI(imageFloatIn, imageMaxIdx, CAMERA_FOCUS_ROI_SIDE, CAMERA_WIDTH, 
+            CAMERA_NUM_PX, imageROIin, &ROInumPixRead, &ROIsideLengthRead);
+        doConvolution(imageROIin, ROIsideLengthRead, ROInumPixRead, mask,
+            gaussian4px, kernelSize, imageROIout);
+        #else
         doConvolution(imageFloatIn, CAMERA_WIDTH, imageNumPix, mask,
             gaussian4px, kernelSize, imageFloatOut);
+        #endif
 
         // Sobel filter for contrast detection
         // Usually, you want to judge sharpness based on the magnitude of
         // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
         // Because we assume stars are mostly round, we can just take
         // either and save a convolution.
+        #ifdef FOCUS_ROI
+        doConvolution(imageROIout, ROIsideLengthRead, ROInumPixRead, mask,
+            sobelKernelY, kernelSize, imageROIsobel);
+        #else
         doConvolution(imageFloatOut, CAMERA_WIDTH, imageNumPix, mask,
-            sobelKernelX, kernelSize, sobelResult);
+            sobelKernelY, kernelSize, sobelResult);
+        #endif
         // Let the sharpness metric be the sum of squared gradients, as
         // estimated by the Sobel operator
         double sobelMetric = 0.0;
+        #ifdef FOCUS_ROI
+        for (uint32_t i = 0; i < ROInumPixRead; i++) {
+            float result = imageROIsobel[i];
+            sobelMetric += result * result;
+        }
+        #else
         for (uint32_t i = 0; i < imageNumPix; i++) {
             float result = sobelResult[i];
             sobelMetric += result * result;
         }
+        #endif
 
         // We normalize by something proportional to the shot noise in the
         // image to handle cases where the shot noise, and thus the sum of
@@ -3248,7 +3281,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
                 if (verbose) {
                     printf("> Waiting for data to send to client...\n");
                 }
-                usleep(10000);
+                usleep(1000);
             }
         }
         send_data = 0;
@@ -3268,6 +3301,11 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         }
         numFocusPos++;
         hasGoneForward = 1;
+
+        // for kst display?
+        memcpy(output_buffer, unpacked_image, CAMERA_NUM_PX * sizeof(uint16_t));
+        // pass off the image bytes for sending to clients
+        memcpy(camera_raw, output_buffer, CAMERA_NUM_PX * sizeof(uint16_t));
     }
 
     if (verbose) {
@@ -3328,7 +3366,6 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
 */
 int doCameraAndAstrometry(void)
 {
-    // START(tstart);
     // these must be static since this function is called perpetually in 
     // updateAstrometry thread
     static double * star_x = NULL, * star_y = NULL, * star_mags = NULL;
@@ -3928,7 +3965,5 @@ int doCameraAndAstrometry(void)
             free(star_mags);
         }
     }
-    // STOP(tend);
-    // DISPLAY_DELTA("|||||| doCameraAndAstrometry", DELTA(tend, tstart));
     return 1;
 }
