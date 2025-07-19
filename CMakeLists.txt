@@ -8,7 +8,7 @@ project ("commands"
 # If you install ids peak via the tar archive, you'll need to point to it here
 set(CMAKE_PREFIX_PATH "/opt/ids-peak-with-ueyetl_2.16.0.0-457_amd64/lib/")
 set(CMAKE_C_FLAGS_RELEASE "-O3")
-set(CMAKE_C_FLAGS_DEBUG "-O0 -fno-omit-frame-pointer -ggdb -g3 -fsanitize-address")
+set(CMAKE_C_FLAGS_DEBUG "-O0 -fno-omit-frame-pointer -ggdb -g3 -fsanitize=address")
 
 # help find our shared libraries at runtime, after install
 set(CMAKE_INSTALL_RPATH ${CMAKE_PREFIX_PATH})

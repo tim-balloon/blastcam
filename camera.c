@@ -121,15 +121,8 @@ int prev_dynamic_hp;
 // For realtime contrast AF
 // Have to declare here or we'd run out of stack space and mysterious-looking SEGFAULT
 float imageFloatIn[CAMERA_NUM_PX] = {0.0};
-#ifdef FOCUS_ROI
-float imageROIin[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
-float imageROIout[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
-uint16_t imageROIwrite[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
-float imageROIsobel[CAMERA_FOCUS_ROI_SIDE * CAMERA_FOCUS_ROI_SIDE] = {0.0};
-#else
 float imageFloatOut[CAMERA_NUM_PX] = {0.0};
 float sobelResult[CAMERA_NUM_PX] = {0.0};
-#endif
 
 /* Blob parameters global structure (defined in camera.h) */
 struct blob_params all_blob_params = {
@@ -2410,6 +2403,91 @@ int imageTransfer(uint16_t* pUnpackedImage)
 
 
 /**
+ * @brief Set the Binning Factor
+ * @details In order to change binning, we must stop and re-start acquisition.
+ * 
+ * @param factor 
+ * @return int -1 if failed, 0 otherwise
+ */
+int setBinningFactor(uint8_t factor)
+{
+    int ret = 0;
+    peak_status status = PEAK_STATUS_SUCCESS;
+
+    // Stop acquisition if ongoing.
+    // If we fail to stop image acquisition, binning will fail, so fail AF.
+    if (PEAK_TRUE == peak_Acquisition_IsStarted(hCam)) {
+        status = peak_Acquisition_Stop(hCam);
+        if (!checkForSuccess(status)) {
+            fprintf(stderr, "ERROR: Failed to stop image acquisition. Exiting "
+                "anyway.\n");
+            return -1;
+        }
+    }
+
+    // If we stopped acquisition, but we still don't have access to binning,
+    // attempt to restart acquisition but fail AF.
+    peak_access_status accessStatus = peak_BinningManual_GetAccessStatus(hCam,
+        PEAK_SUBSAMPLING_ENGINE_SENSOR);
+    if (PEAK_IS_WRITEABLE(accessStatus)) {
+        status = peak_BinningManual_Set(hCam, PEAK_SUBSAMPLING_ENGINE_SENSOR,
+            (uint32_t)factor, (uint32_t)factor);
+        // If we could set binning, but it failed, attempt to restart
+        // acquisition but fail AF.
+        if(!checkForSuccess(status)) {
+            fprintf(stderr, "ERROR: setBinningFactor: setting factor %d "
+                "failed.\n", factor);
+            // Re-start acquisition. If we ever fail to re-start acquisition,
+            // exit.
+            status = peak_Acquisition_Start(hCam, PEAK_INFINITE);
+            if (!checkForSuccess(status)) {
+                fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
+                exit(EXIT_FAILURE);
+            }
+            return -1;
+        }
+    } else {
+        fprintf(stderr, "ERROR: Setting binning factor failed. Binning factor "
+            "not writeable at this time, %d.\n", accessStatus);
+        // Re-start acquisition. If we ever fail to re-start acquisition, exit.
+        status = peak_Acquisition_Start(hCam, PEAK_INFINITE);
+        if (!checkForSuccess(status)) {
+            fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
+            exit(EXIT_FAILURE);
+        }
+        return -1;
+    }
+
+    // Re-start acquisition. If we ever fail to re-start acquisition, exit.
+    status = peak_Acquisition_Start(hCam, PEAK_INFINITE);
+    if (!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return 0;
+}
+
+
+/**
+ * @brief set binning back to 1
+ * 
+ * @return int -1 if failed, 0 otherwise
+ */
+int restoreBinningFactor(void)
+{
+    int ret = 0;
+    if (setBinningFactor(1U) < 0) {
+        // normal operation depends on correct binning factor set
+        fprintf(stderr, "FATAL ERROR: restoreBinningFactor: failed to return "
+            "binning factor to 1.\n");
+        ret = -1;
+    }
+    return ret;
+}
+
+
+/**
  * @brief Measure image sharpness using the peak IPL
  * 
  * @param pSharpness to double to store sharpness value
@@ -2466,7 +2544,7 @@ int measureSharpness(double* pSharpness)
             return -1;
         }
         unpack_mono12((uint16_t *)buffer.memoryAddress, unpacked_image,
-            CAMERA_NUM_PX);
+            CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR));
     }
 
     // measure sharpness
@@ -2476,8 +2554,8 @@ int measureSharpness(double* pSharpness)
         .y = border
     };
     peak_size size = {
-        .width = CAMERA_WIDTH,
-        .height = CAMERA_HEIGHT
+        .width = CAMERA_WIDTH / CAMERA_FOCUS_BINFACTOR,
+        .height = CAMERA_HEIGHT / CAMERA_FOCUS_BINFACTOR
     };
     peak_roi roi = {
         .offset = offset,
@@ -3292,6 +3370,16 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     bool atNearEnd = 0;
     int dir = 1;
 
+    // Set binning to speed up sharpness measurement
+    // NOTE: any return statements between here and the end of the focusing loop
+    // must be guarded by a call to attempt to return the bin factor to 1.
+    // (restoreBinningFactor())
+    if (setBinningFactor(CAMERA_FOCUS_BINFACTOR) < 0) {
+        // focusing ROI in measureSharpness depends on correct binning factor
+        // set
+        return -1;
+    }
+
     while (remainingFocusPos > 0) {
         remainingFocusPos -= 1;
         atFarEnd = (all_camera_params->focus_position >= all_camera_params->end_focus_pos);
@@ -3318,6 +3406,9 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
             fprintf(stderr, "Could not complete image capture: %s.\n", 
                 strerror(errno));
             all_camera_params->focus_mode = 0;
+            if (restoreBinningFactor() < 0) {
+                exit(EXIT_FAILURE);
+            }
             return -1;
         }
         taking_image = 0;
@@ -3327,6 +3418,9 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
             fprintf(stderr, "Could not complete sharpness measurement: %s.\n", 
             strerror(errno));
             all_camera_params->focus_mode = 0;
+            if (restoreBinningFactor() < 0) {
+                exit(EXIT_FAILURE);
+            }
             return -1;
         };
 
@@ -3386,6 +3480,10 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         memcpy(output_buffer, unpacked_image, CAMERA_NUM_PX * sizeof(uint16_t));
         // pass off the image bytes for sending to clients
         memcpy(camera_raw, output_buffer, CAMERA_NUM_PX * sizeof(uint16_t));
+    }
+
+    if (restoreBinningFactor() < 0) {
+        exit(EXIT_FAILURE);
     }
 
     if (verbose) {
