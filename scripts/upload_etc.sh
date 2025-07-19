@@ -18,6 +18,8 @@ rsync -avz --rsync-path="sudo rsync" --delete $ETC_SRC/chrony.conf starcam@$sc1_
 # rsync -avz --rsync-path="sudo rsync" --delete $ETC_SRC/00-installer-config_sc1.yaml starcam@$sc1_ip:/etc/netplan/
 echo "Uploading rc.local config for lens controller..."
 rsync -avz --rsync-path="sudo rsync" --delete $ETC_SRC/rc.local starcam@$sc1_ip:/etc/
+echo "Uploading ids_peak.conf config for vendor library runtime linking..."
+rsync -avz --rsync-path="sudo rsync" --delete $ETC_SRC/ids_peak.conf starcam@$sc1_ip:/etc/ld.so.conf.d/
 echo "Uploading flight software script..."
 rsync -avz --rsync-path="sudo rsync" --delete $ETC_SRC/start_sc_soft.sh starcam@$sc1_ip:/usr/local/sbin/
 echo "Uploading flight software service..."
@@ -35,6 +37,8 @@ rsync -avz --rsync-path="sudo rsync" --delete $ETC_SRC/chrony/starcam/chrony.con
 # rsync -avz --rsync-path="sudo rsync" --delete $ETC_SRC/netplan/00-installer-config_sc2.yaml starcam@$sc2_ip:/etc/netplan/
 echo "Uploading rc.local config for lens controller..."
 rsync -avz --rsync-path="sudo rsync" --delete $ETC_SRC/rc.local starcam@$sc2_ip:/etc/
+echo "Uploading ids_peak.conf config for vendor library runtime linking..."
+rsync -avz --rsync-path="sudo rsync" --delete $ETC_SRC/ids_peak.conf starcam@$sc2_ip:/etc/ld.so.conf.d/
 echo "Uploading flight software script..."
 rsync -avz --rsync-path="sudo rsync" --delete $ETC_SRC/start_sc_soft.sh starcam@$sc2_ip:/usr/local/sbin/
 echo "Uploading flight software service..."
