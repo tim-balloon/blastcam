@@ -2405,6 +2405,13 @@ int imageTransfer(uint16_t* pUnpackedImage)
 /**
  * @brief Set the Binning Factor
  * @details In order to change binning, we must stop and re-start acquisition.
+ * NOTE: binning will mess up GUI display of images, slightly. They should
+ * be readable, but reading an image of half-width into a full-width
+ * memory to send to the GUI will give two side-by-side images, where the
+ * images consist of every other row, and the memory of the last full-size
+ * image occupies the lower half of the memory.
+ * The way to fix would be to keep track of the image size when transmitting
+ * and receiving, extremely not worth it.
  * 
  * @param factor 
  * @return int -1 if failed, 0 otherwise
@@ -2430,7 +2437,7 @@ int setBinningFactor(uint8_t factor)
     peak_access_status accessStatus = peak_BinningManual_GetAccessStatus(hCam,
         PEAK_SUBSAMPLING_ENGINE_SENSOR);
     if (PEAK_IS_WRITEABLE(accessStatus)) {
-        status = peak_BinningManual_Set(hCam, PEAK_SUBSAMPLING_ENGINE_SENSOR,
+        status = peak_BinningManual_Set(hCam, PEAK_SUBSAMPLING_ENGINE_FPGA,
             (uint32_t)factor, (uint32_t)factor);
         // If we could set binning, but it failed, attempt to restart
         // acquisition but fail AF.
@@ -2600,7 +2607,6 @@ int measureSharpness(double* pSharpness)
  */
 int renewCameraHotPixels(void)
 {
-    START(tstart);
     if (verbose) {
         printf("renewCameraHotPixels: making new internal camera hot pixel "
             "mask.\n");
@@ -2621,8 +2627,6 @@ int renewCameraHotPixels(void)
             "sensitivity failed.\n");
         return -1;
     }
-    STOP(tend);
-    DISPLAY_DELTA("||||||||cam HP", DELTA(tend, tstart));
     return 0;
 }
 #endif
@@ -3444,21 +3448,6 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         fprintf(af_file, "%.6lf\t%5d\n", sharpness,
                 all_camera_params->focus_position);
         fflush(af_file);
-
-        // if clients are listening and we want to guarantee data is sent to
-        // them before continuing with auto-focusing, wait until data_sent
-        // confirmation. If there are no clients, no need to slow down auto-
-        // focusing
-        send_data = 1;
-        if (num_clients > 0) {
-            while (!telemetry_sent) {
-                if (verbose) {
-                    printf("> Waiting for data to send to client...\n");
-                }
-                usleep(10000);
-            }
-        }
-        send_data = 0;
 
         // Move to next position
         // if (all_camera_params->focus_position >= all_camera_params->end_focus_pos) {

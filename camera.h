@@ -28,8 +28,10 @@ extern HIDS camera_handle;
 #define MAX_PS         7.0  // [arcsec/px]
 #endif
 #define CAMERA_NUM_PX (CAMERA_WIDTH * CAMERA_HEIGHT)
+// higher than 2 requires FPGA binning. I noticed no speed gains from on-sensor
+// vs. FPGA, or even vs. on host. FPGA binning default.
 #define CAMERA_FOCUS_BINFACTOR 2
-#define CAMERA_MARGIN  0		 // [px]
+#define CAMERA_MARGIN 0 // [px]
 #define CAMERA_MAX_PIXVAL 4095 //  2**12
 #define MIN_BLOBS 4
 #define MAX_BLOBS 300
