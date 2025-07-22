@@ -16,7 +16,6 @@
 #include "lens_adapter.h"
 #include "matrix.h"
 #include "sc_data_structures.h"
-#include "convolve.h"
 #include "fits_utils.h"
 #include "timer.h"
 
@@ -117,12 +116,6 @@ int curr_red_gain, curr_green_gain, curr_blue_gain, curr_gamma, curr_gain_boost;
 unsigned int curr_timeout;
 int bl_offset, bl_mode;
 int prev_dynamic_hp;
-
-// For realtime contrast AF
-// Have to declare here or we'd run out of stack space and mysterious-looking SEGFAULT
-float imageFloatIn[CAMERA_NUM_PX] = {0.0};
-float imageFloatOut[CAMERA_NUM_PX] = {0.0};
-float sobelResult[CAMERA_NUM_PX] = {0.0};
 
 /* Blob parameters global structure (defined in camera.h) */
 struct blob_params all_blob_params = {
@@ -2449,6 +2442,7 @@ int setBinningFactor(uint8_t factor)
             status = peak_Acquisition_Start(hCam, PEAK_INFINITE);
             if (!checkForSuccess(status)) {
                 fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
+                closeCamera();
                 exit(EXIT_FAILURE);
             }
             return -1;
@@ -2460,6 +2454,7 @@ int setBinningFactor(uint8_t factor)
         status = peak_Acquisition_Start(hCam, PEAK_INFINITE);
         if (!checkForSuccess(status)) {
             fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
+            closeCamera();
             exit(EXIT_FAILURE);
         }
         return -1;
@@ -2469,6 +2464,7 @@ int setBinningFactor(uint8_t factor)
     status = peak_Acquisition_Start(hCam, PEAK_INFINITE);
     if (!checkForSuccess(status)) {
         fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
+        closeCamera();
         exit(EXIT_FAILURE);
     }
 
@@ -3295,18 +3291,6 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     uint16_t remainingFocusPos = 1600; 
     char focusStrCmd[10] = {'\0'};
 
-    // Contrast detect algorithm parameters
-    uint16_t kernelSize = 9;
-    // We use the sobel Y kernel because we assume 2 things:
-    // * the sensor x-axis is aligned with the horizon
-    // * we scan primarily in azimuth, so any blurring will primarily be in x,
-    //   making the Y-gradient a more reliable metric than x.
-    float sobelKernelY[9] = {-1., -2., -1., 0., 0., 0., 1., 2., 1.};
-    // astropy.convolution.Gaussian2DKernel(x_stddev=1.27, y_stddev=1.27, x_size=3, y_size=3),
-    // matched filter for star PSF FWHM = 3 px, normalized kernel
-    float gaussian4px[9] = {0.08839674, 0.12052241, 0.08839674, 0.12052241,
-        0.16432339, 0.12052241, 0.08839674, 0.12052241, 0.08839674};
-
     // Initialize focuser and AF logging
     int bestFocusPos = all_camera_params->focus_position;
     double bestFocusSharpness = 0;
@@ -3411,6 +3395,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
                 strerror(errno));
             all_camera_params->focus_mode = 0;
             if (restoreBinningFactor() < 0) {
+                closeCamera();
                 exit(EXIT_FAILURE);
             }
             return -1;
@@ -3423,6 +3408,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
             strerror(errno));
             all_camera_params->focus_mode = 0;
             if (restoreBinningFactor() < 0) {
+                closeCamera();
                 exit(EXIT_FAILURE);
             }
             return -1;
@@ -3472,6 +3458,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     }
 
     if (restoreBinningFactor() < 0) {
+        closeCamera();
         exit(EXIT_FAILURE);
     }
 
