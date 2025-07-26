@@ -1,13 +1,19 @@
 #ifndef LENS_ADAPTER_H
 #define LENS_ADAPTER_H
 
-int initLensAdapter(char * path);                                
-int beginAutoFocus();                                               
-int defaultFocusPosition();                                         
-int shiftFocus(char * cmd);                                         
-int calculateOptimalFocus(int num_focus, char * auto_focus_file);                
-int adjustCameraHardware();                            
-int runCommand(const char * command, int file, char * return_str);  
+// The average of the peak sharpness location of 14 double-pass AF runs
+// Sigma 85mm f/1.4 HSM DG ART lens
+// Outside air temperature = 94F
+// Red filter B+W 091
+#define DEFAULT_FOCUS_OFFSET (-514)
+
+int initLensAdapter(char * path);
+int beginAutoFocus();
+int defaultFocusPosition();
+int shiftFocus(char * cmd);
+int calculateOptimalFocus(int num_focus, char * auto_focus_file);
+int adjustCameraHardware();
+int runCommand(const char * command, int file, char * return_str);
 
 #pragma pack(push, 1)
 /* Camera and lens parameter struct, including auto-focusing */

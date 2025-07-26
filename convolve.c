@@ -2,21 +2,166 @@
 
 
 /**
- * @brief first moment of an array
+ * @brief calculates various stats that require looping over the whole image
+ * 
  * @param data pointer to array of length n
  * @param n length of data array and denominator in mean
- * @returns The truncated floating point mean
+ * @param pAverage average value
+ * @param pMax max value
+ * @param pIdxMax index of max value
+ * @returns -1 on failure, 0 otherwise
  */
-uint16_t average(uint16_t* data, uint32_t n)
+int imageStats(float* data, uint32_t n, float* pAverage, float* pMax,
+    uint32_t* pIdxMax)
 {
+    // ASSUMPTION: input values are limited to plausible ADU values, i.e. less
+    // than 2^16 - 1, to avoid overflow of float during sum
     float summed = 0.0;
+    float max = -1.0;
+    uint32_t idxMax = 0;
     if (n < 1U) {
-        return 0U;
+        return -1;
     }
-    for (uint32_t j = 1; j <= n;j ++ ) {
-        summed += data[j];
+    for (uint32_t ii = 1; ii <= n; ii++) {
+        float thisData = data[ii];
+        summed += thisData;
+        if (thisData >= max) {
+            max = thisData;
+            idxMax = ii;
+        }
     }
-    return (uint16_t)truncf(summed / n);
+    *pAverage = summed / n;
+    *pMax = max;
+    *pIdxMax = idxMax;
+    return 0;
+}
+
+
+/**
+ * @brief Returns the flattened array indices of the top-left and bottom-right
+ * corners of a region of interest (ROI) centered on `idx` with side length
+ * `sideLength`.
+ * @details For even sideLength, the ROI returned is `sideLength` + 1. The ROI
+ * is limited to the top, bottom, left, and right edges.
+ * 
+ * @param idx flattened array index of ROI center
+ * @param imageWidth 
+ * @param imageNumPix total number of image pixels 
+ * @param sideLength total side length of ROI
+ * @param[out] pIdxTopLeft flattened array index of top-left ROI corner
+ * @param[out] pIdxBottomRight flattened array index of bottom-right ROI corner
+ * @return int -1 if failed, 0 otherwise
+ */
+int calcROIcorners(
+    uint32_t idx,
+    uint8_t sideLength,
+    uint16_t imageWidth,
+    uint32_t imageNumPix,
+    uint32_t* pIdxTopLeft,
+    uint32_t* pIdxBottomRight)
+{
+    uint8_t numExtraRows = 0U;
+    uint8_t halfSideLength = sideLength / 2U;
+
+    // Limit left/right to available space
+    uint16_t availLeft = idx % imageWidth;
+    uint16_t availRight = imageWidth - availLeft - 1U;
+
+    availLeft = (availLeft > halfSideLength) ? halfSideLength : availLeft;
+    availRight = (availRight > halfSideLength) ? halfSideLength : availRight;
+
+    int64_t possibleTopLeft = (int64_t)idx - imageWidth * halfSideLength - availLeft;
+    int64_t possibleBottomRight = idx + imageWidth * halfSideLength + availRight;
+
+    if (possibleBottomRight >= imageNumPix) {
+        // number of rows past bottom
+        numExtraRows = ((possibleBottomRight - imageNumPix) / imageWidth) + 1;
+        // limit the bottom-right corner to the bottom row
+        *pIdxBottomRight = possibleBottomRight - (numExtraRows * imageWidth);
+    } else {
+        *pIdxBottomRight = (uint32_t)possibleBottomRight;
+    }
+
+    if (possibleTopLeft < 0) {
+        // number of rows above top
+        numExtraRows = possibleTopLeft / imageWidth;
+        // limit the top-left corner to the top row
+        *pIdxTopLeft = possibleTopLeft - (numExtraRows * imageWidth);
+    } else {
+        *pIdxTopLeft = (uint32_t)possibleTopLeft;
+    }
+    return 0;
+}
+
+
+/**
+ * @brief Reads all available pixels of the ROI defined by calcROIcorners into
+ * the buffer ROIbuffer.
+ * @details pROIbuffer should be allocated large enough to handle
+ * (ROIsideLength + (1 - ROIsideLength % 2))^2 values. Not all spaces will be
+ * filled, if the ROI is limited by an edge.
+ * pROInumPixRead and pROIsideLengthRead are filled with the actual number of
+ * ROI pixels read, and the actual ROI width, for the caller to use when reading
+ * the contents of the ROI.
+ * 
+ * @param[in] pImageBuffer overall image from which the ROI is read, flattened, row-
+ * major order
+ * @param ROIcenter center location index in the flattened image imageBuffer
+ * @param ROIsideLength requested ROI side length. Even values are promoted to
+ * the next odd value to keep the ROI centered on ROIcenter.
+ * @param imageWidth total width of image pointed to by imageBuffer, in pixels
+ * @param imageNumPix total length of imageBuffer
+ * @param[out] pROIbuffer array large enough to hold at least
+ * (ROIsideLength + (1 - ROIsideLength % 2))^2 values
+ * @param[out] pROInumPixRead the actual number of pixels read from the ROI. Use this
+ * to safely read the returned ROIbuffer.
+ * @param[out] pROIsideLengthRead the actual number side length of the ROI. Use
+ * this to safely read the returned ROIbuffer.
+ * @return -1 if failed, 0 otherwise 
+ */
+int readROI(
+    float* pImageBuffer,
+    uint32_t ROIcenter,
+    uint8_t ROIsideLength,
+    uint16_t imageWidth,
+    uint32_t imageNumPix,
+    float* pROIbuffer,
+    uint32_t* pROInumPixRead,
+    uint8_t* pROIsideLengthRead)
+{
+    int ret = 0;
+    uint32_t idxTopLeft = 0;
+    uint32_t idxBottomRight = imageNumPix;
+
+    // Get the start/stop indices within the larger array
+    ret = calcROIcorners(ROIcenter, ROIsideLength, imageWidth, imageNumPix, &idxTopLeft, &idxBottomRight);
+
+    uint16_t colTopLeft = idxTopLeft % imageWidth;
+    uint16_t colBottomRight = idxBottomRight % imageWidth;
+    uint32_t bufferIdx = idxTopLeft;
+    // The current index within the ROI buffer
+    uint32_t ROIidx = 0;
+    // Never read outside the input buffer and stop after reaching the end of
+    // the ROI
+    while ((bufferIdx < imageNumPix) && (bufferIdx <= idxBottomRight)) {
+        pROIbuffer[ROIidx] = pImageBuffer[bufferIdx];
+        // Determine when to skip to the next ROI row start
+        if ((bufferIdx % imageWidth) == colBottomRight) {
+            // next index is same col as top left corner, and one row greater
+            // than current row:
+            // (bufferIdx / imageWidth + 1) is one row greater than current,
+            // (bufferIdx / imageWidth + 1) * imageWidth is the index of the
+            //   beginning of that row,
+            // colTopLeft is the offset into that row.
+            bufferIdx = colTopLeft + (bufferIdx / imageWidth + 1) * imageWidth;
+        } else {
+            bufferIdx++;
+        }
+        ROIidx++;
+    }
+    *pROInumPixRead = ROIidx;
+    *pROIsideLengthRead = (colBottomRight - colTopLeft >= 0) ? colBottomRight - colTopLeft + 1 : 0U;
+    return 0;
 }
 
 
@@ -35,11 +180,11 @@ uint16_t average(uint16_t* data, uint32_t n)
  * `pixelIndex`
  */
 void getNeighborhoodNearest(
-    uint16_t* imageBuffer,
+    float* imageBuffer,
     uint32_t pixelIndex,
     uint16_t imageWidth,
     uint32_t imageNumPix,
-    uint16_t* neighborhood)
+    float* neighborhood)
 {
     // Clawing back a couple of instructions due to repeated ops
     int64_t above = pixelIndex + imageWidth;
@@ -193,18 +338,18 @@ void getNeighborhoodNearest(
  * here, you heathen.
  * @return the result of the convolution
  */
-float convolve9(uint16_t* array, float* kernel)
+float convolve9(float* array, float* kernel)
 {
     return (
-        (float)array[0] * kernel[8] +
-        (float)array[1] * kernel[7] +
-        (float)array[2] * kernel[6] +
-        (float)array[3] * kernel[5] +
-        (float)array[4] * kernel[4] +
-        (float)array[5] * kernel[3] +
-        (float)array[6] * kernel[2] +
-        (float)array[7] * kernel[1] +
-        (float)array[8] * kernel[0]
+        array[0] * kernel[8] +
+        array[1] * kernel[7] +
+        array[2] * kernel[6] +
+        array[3] * kernel[5] +
+        array[4] * kernel[4] +
+        array[5] * kernel[3] +
+        array[6] * kernel[2] +
+        array[7] * kernel[1] +
+        array[8] * kernel[0]
     );
 }
 
@@ -228,7 +373,7 @@ float convolve9(uint16_t* array, float* kernel)
  * @param[out] imageResult 
  */
 void doConvolution(
-    uint16_t* imageBuffer,
+    float* imageBuffer,
     uint16_t imageWidth,
     uint32_t imageNumPix,
     unsigned char* mask,
@@ -237,7 +382,7 @@ void doConvolution(
     float* imageResult)
 {
     // statically allocate this array for (re)use throughout the run
-    uint16_t neighborhood[9] = {0};
+    float neighborhood[9] = {0.0};
     for (uint32_t i = 0; i < imageNumPix; i++) {
         getNeighborhoodNearest(imageBuffer, i, imageWidth, imageNumPix, neighborhood);
         imageResult[i] = convolve9(neighborhood, kernel) * (float)(mask[i]);

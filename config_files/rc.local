@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# For the star camera computer startup, rename the serial port the lens
+# controller is attached to:
+ln -s /dev/ttyS4 /dev/ttyLens1port8001
+exit 0

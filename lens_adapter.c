@@ -313,7 +313,6 @@ int initLensAdapter(char * path) {
         return -1;
     }
 
-    // set focus to 80 below infinity (hard-coded value  determined by testing)
     if (runCommand("la\r", file_descriptor, birger_output) == -1) {
         printf("Failed to learn current focus range.\n");
         return -1;
@@ -328,14 +327,20 @@ int initLensAdapter(char * path) {
         printf("Failed to move focus position to infinity.\n");
         return -1;
     }
-    if (runCommand("mf -80\r", file_descriptor, birger_output) == -1) {
+    // "mf ": 3
+    // encoder pos: up to 5
+    // \r: 2
+    // 3 + 5 + 2 = 10
+    char defaultFocusOffsetStr[10] = "";
+    snprintf(defaultFocusOffsetStr, 10, "mf %i\r", DEFAULT_FOCUS_OFFSET);
+    if (runCommand(defaultFocusOffsetStr, file_descriptor, birger_output) == -1) {
         printf("Failed to move the focus to the desired default position.\n");
         return -1;
     } else {
         printf("Focus moved to desired default position.\n");
     }
 
-    printf("Focus at 80 counts below infinity:\n");
+    printf("Focus at %i counts relative to infinity:\n", DEFAULT_FOCUS_OFFSET);
     if (runCommand("fp\r", file_descriptor, birger_output) == -1) {
         printf("Failed to print the new focus position.\n");
         return -1;
@@ -411,7 +416,6 @@ int beginAutoFocus() {
 }
 
 /* Function to navigate to the heuristically-determined default focus position
-** (80 counts below infinity).
 ** Input: None.
 ** Output: A flag indicating movement to default focus position or not.
 */
@@ -435,7 +439,7 @@ int defaultFocusPosition() {
         printf("Failed to move the focus to the default position.\n");
         return -1;
     } else if (verbose) {
-        printf("Focus moved to default focus - 80 counts below infinity.\n");
+        printf("Focus moved to default focus: %i counts relative to infinity.\n", DEFAULT_FOCUS_OFFSET);
     }
 
     // print focus to get new focus values and re-populate camera params struct

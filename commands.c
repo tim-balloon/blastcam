@@ -379,7 +379,7 @@ void * processClient(void * for_client_thread) {
                 // if we are taking an image right now, need to wait to execute
                 // any lens commands
                 while (taking_image) {
-                    usleep(100000);
+                    usleep(10000);
                 }
 
                 // perform changes to camera settings in lens_adapter.c (focus, 
