@@ -30,7 +30,7 @@ extern HIDS camera_handle;
 #define CAMERA_NUM_PX (CAMERA_WIDTH * CAMERA_HEIGHT)
 // higher than 2 requires FPGA binning. I noticed no speed gains from on-sensor
 // vs. FPGA, or even vs. on host. FPGA binning default.
-#define CAMERA_FOCUS_BINFACTOR 2
+#define CAMERA_FOCUS_BINFACTOR 4
 #define CAMERA_MARGIN 0 // [px]
 #define CAMERA_MAX_PIXVAL 4095 //  2**12
 #define MIN_BLOBS 4
@@ -118,5 +118,8 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x, 
               double ** star_y, double ** star_mags, uint16_t * output_buffer);
 void unpack_mono12(uint16_t * packed, uint16_t * unpacked, int num_pixels);
+
+void boxcarFilterImage(uint16_t * ib, int i0, int j0, int i1, int j1, int r_f, 
+                       double * filtered_image);
 
 #endif

@@ -1,28 +1,110 @@
+#include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 #include "../convolve.h"
 
+#define CLOSE 1e-6
+bool verbose = 1;
+
 #define IMAGE_WIDTH 5320
 #define IMAGE_HEIGHT 3032
-//#define IMAGE_WIDTH 11
-//#define IMAGE_HEIGHT 11
 
-uint16_t imageBuffer[IMAGE_WIDTH * IMAGE_HEIGHT] = {0};
+float imageBuffer[IMAGE_WIDTH * IMAGE_HEIGHT] = {0};
 unsigned char mask[IMAGE_WIDTH * IMAGE_HEIGHT] = {0};
 float imageResult[IMAGE_WIDTH * IMAGE_HEIGHT] = {0};
 
+#define CAMERA_WIDTH 9//5320
+#define CAMERA_HEIGHT 9//3032
+#define CAMERA_NUM_PX 81//5320 * 3032
+uint16_t imageBufferB[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
+double imageResultB[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
+/**
+ * @brief Function that will do a simple boxcar smoothing of an image.
+ * 
+ * @param ib "input buffer" the input image with 12 bit depth, stored in 16bit ints
+ * @param i0 starting column for filtering
+ * @param j0 starting row for filtering
+ * @param i1 ending column for filtering
+ * @param j1 ending row for filtering
+ * @param r_f boxcar filter radius
+ * @param filtered_image output image
+ */
+void boxcarFilterImage(uint16_t * ib, int i0, int j0, int i1, int j1, int r_f, 
+                       double * filtered_image)
+{
+    static int first_time = 1;
+    static char * nc = NULL;
+    static uint64_t * ibc1 = NULL;
 
-int saveArrayDumb(float* imageResult, uint16_t imageWidth, uint32_t imageNumPix) {
+    if (first_time) {
+        nc = calloc(CAMERA_NUM_PX, 1);
+        ibc1 = calloc(CAMERA_NUM_PX, sizeof(uint64_t));
+        first_time = 0;
+    }
+
+    int b = r_f;
+    int64_t isx;
+    int s, n;
+    double ds, dn;
+    double last_ds = 0;
+
+    for (int j = j0; j < j1; j++) {
+        n = 0;
+        isx = 0;
+        for (int i = i0; i < i0 + 2*r_f + 1; i++) {
+            n += mask[i + j*CAMERA_WIDTH];
+            isx += ib[i + j*CAMERA_WIDTH]*mask[i + j*CAMERA_WIDTH];
+        }
+
+        int idx = CAMERA_WIDTH*j + i0 + r_f;
+
+        for (int i = r_f + i0; i < i1 - r_f - 1; i++) {
+            ibc1[idx] = isx;
+            nc[idx] = n;
+            isx = isx + mask[idx + r_f + 1]*ib[idx + r_f + 1] - 
+                  mask[idx - r_f]*ib[idx - r_f];
+            n = n + mask[idx + r_f + 1] - mask[idx - r_f];
+            idx++;
+        }
+
+        ibc1[idx] = isx;
+        nc[idx] = n;
+    }
+
+    for (int j = j0+b; j < j1-b; j++) {
+        for (int i = i0+b; i < i1-b; i++) {
+            n = s = 0;
+            for (int jp =- r_f; jp <= r_f; jp++) {
+                int idx = i + (j+jp)*CAMERA_WIDTH;
+                s += ibc1[idx];
+                n += nc[idx];
+            }
+            ds = s;
+            dn = n;
+            if (dn > 0.0) {
+                ds /= dn;
+                last_ds = ds;
+            } else {
+                ds = last_ds;
+            }
+            filtered_image[i + j*CAMERA_WIDTH] = ds;
+        }
+    }
+}
+
+
+int saveArrayDumb(char* fname, float* imageResult, uint16_t imageWidth, uint32_t imageNumPix) {
     bool isRight = 0;
     FILE* fp;
-    if ((fp = fopen("dummyArray.csv", "w")) == NULL) {
-        fprintf(stderr, "Could not open image result file: %s.\n",
-            strerror(errno));
+    if ((fp = fopen(fname, "w")) == NULL) {
+        fprintf(stderr, "Could not open image result file %s: %s.\n",
+            fname, strerror(errno));
         return -1;
     }
     for (int i = 0; i < imageNumPix; i++)
@@ -42,62 +124,931 @@ int saveArrayDumb(float* imageResult, uint16_t imageWidth, uint32_t imageNumPix)
 }
 
 
-int main(int argc, char* argv[]) {
-    uint16_t imageWidth = IMAGE_WIDTH;
-    uint16_t imageHeight = IMAGE_HEIGHT;
+// reset buffer and result allocated memeory
+void reset(void) {
+    memset(imageBuffer, 0.0, sizeof(imageBuffer));
+    memset(mask, 1.0, sizeof(mask));
+    memset(imageResult, 0.0, sizeof(imageResult));
+    memset(imageBufferB, 0.0, sizeof(imageBufferB));
+    memset(imageResultB, 0.0, sizeof(imageResultB));
+}
+
+// Test results of 3x3 Gaussian blur
+void test_doConvolution3x3_Gaussian(void) {
+    printf("\ntest_doConvolution3x3_Gaussian\n");
+
+    reset();
+
+    uint16_t imageWidth = 9;
+    uint16_t imageHeight = 9;
     uint32_t imageNumPix = imageWidth * imageHeight;
     
-    for (unsigned int i = 0; i < IMAGE_WIDTH * IMAGE_HEIGHT; i++) {
+    for (unsigned int i = 0; i < imageNumPix; i++) {
         mask[i] = 1;
     }
-    imageBuffer[imageNumPix / 2] = 100;
+    imageBuffer[imageNumPix / 2] = 100.0;
 
-    float kernel[9] = {1./16., 2./16., 1./16., 2./16., 4./16., 2./16., 1./16., 2./16., 1./16.}; // gaussian
+    float gaussianKernel[9] = {1./16., 2./16., 1./16., 2./16., 4./16., 2./16., 1./16., 2./16., 1./16.}; // gaussian
+
+    doConvolution3x3(imageBuffer, mask, imageWidth, imageNumPix,
+        gaussianKernel, imageResult);
+
+    float answers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 6.25, 12.5, 6.25, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 12.5, 25.0, 12.5, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 6.25, 12.5, 6.25, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f],", imageResult[i], answers[i]);
+        }
+        assert (fabs(imageResult[i] - answers[i]) < CLOSE);
+    }
+    printf("\nPASS\n");}
+
+
+// A big array for testing 3x3 case optimization
+void test_doConvolution3x3_perf(void) {
+    printf("\ntest_doConvolution3x3_perf\n");
+
+    reset();
+
+    uint16_t imageWidth = 5320;
+    uint16_t imageHeight = 3032;
+    uint32_t imageNumPix = imageWidth * imageHeight;
+
+    float gaussianKernel[9] = {1./16., 2./16., 1./16., 2./16., 4./16., 2./16., 1./16., 2./16., 1./16.}; // gaussian
     // technically, sobel takes G = (G_x^2 + G_y^2)^.5 as an approximation of
     // the gradient, but stars are round, so any stars (or indeed other
     // features) will be sharp in x,y, or any other direction.
-    // float kernel[9] = {-1., 0., 1., -2., 0., 2., -1., 0., 1.}; // sobel x
-    uint16_t kernelSize = 9;
+    float sobelKernel[9] = {-1., 0., 1., -2., 0., 2., -1., 0., 1.}; // sobel x
 
     struct timespec tstart = {0,0};
     struct timespec tconv = {0,0};
     struct timespec tend = {0,0};
 
-    uint16_t fakeMean = 0; // not actually the mean, but fulfills signature
     int nCalls = 10;
     while (nCalls > 0) {
         nCalls -= 1;
         clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tstart);
 
-        doConvolution(imageBuffer, imageWidth, imageNumPix, mask, kernel,
-            kernelSize, imageResult);
+        doConvolution3x3(imageBuffer, mask, imageWidth, imageNumPix,
+            gaussianKernel, imageResult);
 
         clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tconv);
 
-        // post process
-        double sqSum = 0.0;
-        for (uint32_t i = 0; i < imageNumPix; i++) {
-            float result = (float)imageResult[i];
-            sqSum += result * result;
-        }
-
-        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tend);
-
-        printf("doConvolution took about %.7f seconds to do conv, %.7f seconds "
-            "to calc sqSum %lf\n",
+        printf("doConvolution took about %.7f seconds to do conv\n",
             ((double)tconv.tv_sec + 1.0e-9*tconv.tv_nsec) - 
-            ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec),
-            ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
-            ((double)tconv.tv_sec + 1.0e-9*tconv.tv_nsec),
-            sqSum);
+            ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec)
+        );
     }
 
-    // gaussian normalize
-    // for (uint32_t i = 0; i < imageNumPix; i++) {
-    //     imageResultDbl[i] = imageResult[i] / 16.0;
-    // }
+    saveArrayDumb("dummyArrayBig.csv", imageResult, imageWidth, imageNumPix);
 
-    saveArrayDumb(imageResult, imageWidth, imageNumPix);
+}
+
+
+// Test results of 3x3 Gaussian blur using variable size kernel
+void test_doConvolutionNxN_3x3(void) {
+    printf("\ntest_doConvolutionNxN_3x3\n");
+
+    reset();
+
+    uint16_t imageWidth = 9;
+    uint16_t imageHeight = 9;
+    uint32_t imageNumPix = imageWidth * imageHeight;
+
+    imageBuffer[imageNumPix / 2] = 100.0;
+
+    uint8_t kernelSideLength = 3;
+    float gaussianKernel[9] = {1./16., 2./16., 1./16., 2./16., 4./16., 2./16., 1./16., 2./16., 1./16.}; // gaussian
+
+    doConvolutionNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        gaussianKernel, kernelSideLength, imageResult);
+
+    float answers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 6.25, 12.5, 6.25, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 12.5, 25.0, 12.5, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 6.25, 12.5, 6.25, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f],", imageResult[i], answers[i]);
+        }
+        assert (fabs(imageResult[i] - answers[i]) < CLOSE);
+    }
+    printf("\nPASS\n");
+}
+
+
+// Test results of 5x5 boxcar using variable size kernel
+void test_doConvolutionNxN_5x5(void) {
+    printf("\ntest_doConvolutionNxN_5x5\n");
+
+    reset();
+
+    uint16_t imageWidth = 9;
+    uint16_t imageHeight = 9;
+    uint32_t imageNumPix = imageWidth * imageHeight;
+
+    uint8_t kernelSideLength = 5;
+    float boxKernel[25] = {
+        1./25.,1./25.,1./25.,1./25.,1./25.,
+        1./25.,1./25.,1./25.,1./25.,1./25.,
+        1./25.,1./25.,1./25.,1./25.,1./25.,
+        1./25.,1./25.,1./25.,1./25.,1./25.,
+        1./25.,1./25.,1./25.,1./25.,1./25.,
+    };
+
+    imageBuffer[imageNumPix / 2] = 100.0;
+
+    doConvolutionNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        boxKernel, kernelSideLength, imageResult);
+
+    float answers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 4.00, 4.00, 4.00, 4.00, 4.00, 0.00, 0.00,
+        0.00, 0.00, 4.00, 4.00, 4.00, 4.00, 4.00, 0.00, 0.00,
+        0.00, 0.00, 4.00, 4.00, 4.00, 4.00, 4.00, 0.00, 0.00,
+        0.00, 0.00, 4.00, 4.00, 4.00, 4.00, 4.00, 0.00, 0.00,
+        0.00, 0.00, 4.00, 4.00, 4.00, 4.00, 4.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f],", imageResult[i], answers[i]);
+        }
+        assert (fabs(imageResult[i] - answers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+}
+
+
+// Test edge cases of variable size kernel 3x3 boxcar
+void test_doConvolutionNxN_edge(void) {
+    printf("\ntest_doConvolutionNxN_edge\n");
+
+    uint16_t imageWidth = 9;
+    uint16_t imageHeight = 9;
+    uint32_t imageNumPix = imageWidth * imageHeight;
+
+    uint8_t kernelSideLength = 3;
+    float boxKernel[9] = {
+        1./9.,1./9.,1./9.,
+        1./9.,1./9.,1./9.,
+        1./9.,1./9.,1./9.,
+    };
+
+    // ========================================================================
+    // TOP LEFT
+    // ========================================================================
+    reset();
+
+    imageBuffer[0] = 101.0;
+    memcpy(imageResult, imageBuffer, imageNumPix * sizeof(float));
+
+    doConvolutionNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        boxKernel, kernelSideLength, imageResult);
+
+    float TLanswers[81] = {
+        101.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 101. / 9., 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f]", imageResult[i], TLanswers[i]);
+        }
+        assert (fabs(imageResult[i] - TLanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // TOP RIGHT
+    // ========================================================================
+    reset();
+
+    imageBuffer[imageWidth - 1] = 101.0;
+    memcpy(imageResult, imageBuffer, imageNumPix * sizeof(float));
+
+    doConvolutionNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        boxKernel, kernelSideLength, imageResult);
+
+    float TRanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 101.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 101. / 9., 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f]", imageResult[i], TRanswers[i]);
+        }
+        assert (fabs(imageResult[i] - TRanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // BOTTOM LEFT
+    // ========================================================================
+    reset();
+
+    imageBuffer[imageNumPix - imageWidth] = 101.0;
+    memcpy(imageResult, imageBuffer, imageNumPix * sizeof(float));
+
+    doConvolutionNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        boxKernel, kernelSideLength, imageResult);
+
+    float BLanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 101. / 9., 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        101.0, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f]", imageResult[i], BLanswers[i]);
+        }
+        assert (fabs(imageResult[i] - BLanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // BOTTOM RIGHT
+    // ========================================================================
+    reset();
+
+    imageBuffer[imageNumPix - 1] = 101.0;
+    memcpy(imageResult, imageBuffer, imageNumPix * sizeof(float));
+
+    doConvolutionNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        boxKernel, kernelSideLength, imageResult);
+
+    float BRanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 101. / 9., 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 101.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f]", imageResult[i], BRanswers[i]);
+        }
+        assert (fabs(imageResult[i] - BRanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+}
+
+
+// A big array for testing NxN optimization
+void test_doConvolutionNxN_perf(void) {
+    printf("\ntest_doConvolutionNxN_perf\n");
+
+    reset();
+
+    uint16_t imageWidth = 5320;
+    uint16_t imageHeight = 3032;
+    uint32_t imageNumPix = imageWidth * imageHeight;
+
+    uint8_t kernelSideLength = 5;
+    float boxKernel[25] = {
+        1./25.,1./25.,1./25.,1./25.,1./25.,
+        1./25.,1./25.,1./25.,1./25.,1./25.,
+        1./25.,1./25.,1./25.,1./25.,1./25.,
+        1./25.,1./25.,1./25.,1./25.,1./25.,
+        1./25.,1./25.,1./25.,1./25.,1./25.,
+    };
+
+    struct timespec tstart = {0,0};
+    struct timespec tconv = {0,0};
+
+    int nCalls = 10;
+    while (nCalls > 0) {
+        nCalls -= 1;
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tstart);
+
+        doConvolutionNxN(imageBuffer, mask, imageWidth, imageNumPix,
+            boxKernel, kernelSideLength, imageResult);
+
+        // boxcarFilterImage(imageBufferB, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT, 5, 
+        //     imageResultB);
+
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tconv);
+
+        printf("doConvolutionNxN took about %.7f seconds to do %dx%d conv\n",
+            ((double)tconv.tv_sec + 1.0e-9*tconv.tv_nsec) - 
+            ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec),
+            kernelSideLength, kernelSideLength
+        );
+    }
+}
+
+
+void test_doBoxcarNxN_3x3(void) {
+    printf("\ntest_doBoxcarNxN_3x3\n");
+
+    reset();
+
+    uint16_t imageWidth = 9;
+    uint16_t imageHeight = 9;
+    uint32_t imageNumPix = imageWidth * imageHeight;
+    uint8_t radius = 1;
+
+    imageBuffer[imageNumPix / 2] = 101.0;
+    imageBuffer[imageNumPix / 2 + 1] = 101.0;
+    float* pIntermediate = malloc(imageNumPix * sizeof(float));
+
+    doBoxcarNxN(imageBuffer, mask, imageWidth, imageNumPix, radius, pIntermediate, imageResult);
+
+    float answers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 101./9., 2*101./9., 2*101./9., 101./9., 0.00, 0.00,
+        0.00, 0.00, 0.00, 101./9., 2*101./9., 2*101./9., 101./9., 0.00, 0.00,
+        0.00, 0.00, 0.00, 101./9., 2*101./9., 2*101./9., 101./9., 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    free(pIntermediate);
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f],", imageResult[i], answers[i]);
+        }
+        assert (fabs(imageResult[i] - answers[i]) < CLOSE);
+    }
+    printf("\nPASS\n");
+}
+
+// Test edge cases for separable boxcar filter
+void test_doBoxcarNxN_edge(void) {
+    printf("\ntest_doBoxcarNxN_edge\n");
+
+    uint16_t imageWidth = 9;
+    uint16_t imageHeight = 9;
+    uint32_t imageNumPix = imageWidth * imageHeight;
+
+    float* pIntermediate = malloc(imageNumPix * sizeof(float));
+
+    uint8_t radius = 1;
+    float boxKernel[9] = {
+        1./9.,1./9.,1./9.,
+        1./9.,1./9.,1./9.,
+        1./9.,1./9.,1./9.,
+    };
+
+    // ========================================================================
+    // LEFT
+    // ========================================================================
+    reset();
+
+    imageBuffer[imageWidth * 2] = 101.0;
+    memcpy(imageResult, imageBuffer, imageNumPix * sizeof(float));
+
+    doBoxcarNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        radius, pIntermediate, imageResult);
+
+    float Lanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 101./9., 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        101.00, 101./9., 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 101./9., 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f]", imageResult[i], Lanswers[i]);
+        }
+        assert (fabs(imageResult[i] - Lanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // TOP LEFT
+    // ========================================================================
+    reset();
+
+    imageBuffer[0] = 101.0;
+    memcpy(imageResult, imageBuffer, imageNumPix * sizeof(float));
+
+    doBoxcarNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        radius, pIntermediate, imageResult);
+
+    float TLanswers[81] = {
+        101.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f]", imageResult[i], TLanswers[i]);
+        }
+        assert (fabs(imageResult[i] - TLanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // TOP RIGHT
+    // ========================================================================
+    reset();
+
+    imageBuffer[imageWidth - 1] = 101.0;
+    memcpy(imageResult, imageBuffer, imageNumPix * sizeof(float));
+
+    doBoxcarNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        radius, pIntermediate, imageResult);
+
+    float TRanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 101.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f]", imageResult[i], TRanswers[i]);
+        }
+        assert (fabs(imageResult[i] - TRanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // BOTTOM LEFT
+    // ========================================================================
+    reset();
+
+    imageBuffer[imageNumPix - imageWidth] = 101.0;
+    memcpy(imageResult, imageBuffer, imageNumPix * sizeof(float));
+
+    doBoxcarNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        radius, pIntermediate, imageResult);
+
+    float BLanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        101.0, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f]", imageResult[i], BLanswers[i]);
+        }
+        assert (fabs(imageResult[i] - BLanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // BOTTOM RIGHT
+    // ========================================================================
+    reset();
+
+    imageBuffer[imageNumPix - 1] = 101.0;
+    memcpy(imageResult, imageBuffer, imageNumPix * sizeof(float));
+
+    doBoxcarNxN(imageBuffer, mask, imageWidth, imageNumPix,
+        radius, pIntermediate, imageResult);
+
+    float BRanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 101.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f]", imageResult[i], BRanswers[i]);
+        }
+        assert (fabs(imageResult[i] - BRanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+}
+
+
+void test_doBoxcarNxN_perf(void) {
+    printf("\ntest_doBoxcarNxN_perf\n");
+
+    reset();
+
+    uint16_t imageWidth = 5320;
+    uint16_t imageHeight = 3032;
+    uint32_t imageNumPix = imageWidth * imageHeight;
+    uint8_t radius = 10;
+
+    imageBuffer[imageNumPix / 2] = 101.0;
+    float* pIntermediate = malloc(imageNumPix * sizeof(float));
+
+    struct timespec tstart = {0,0};
+    struct timespec tconv = {0,0};
+
+    int nCalls = 10;
+    while (nCalls > 0) {
+        nCalls -= 1;
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tstart);
+
+        doBoxcarNxN(imageBuffer, mask, imageWidth, imageNumPix, radius, pIntermediate, imageResult);
+
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tconv);
+
+        printf("doBoxcarNxN took about %.7f seconds to do %dx%d conv\n",
+            ((double)tconv.tv_sec + 1.0e-9*tconv.tv_nsec) - 
+            ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec),
+            radius * 2 + 1, radius * 2 + 1
+        );
+    }
+    free(pIntermediate);
+}
+
+
+void test_boxcarFilterImage_3x3(void) {
+    printf("\ntest_boxcarFilterImage_3x3\n");
+
+    reset();
+
+    int imageWidth = CAMERA_WIDTH;
+    int imageHeight = CAMERA_HEIGHT;
+    uint32_t imageNumPix = imageWidth * imageHeight;
+    int radius = 1;
+
+    imageBufferB[imageNumPix / 2] = 101.0;
+    imageBufferB[imageNumPix / 2 + 1] = 101.0;
+
+    boxcarFilterImage(imageBufferB, 0, 0, imageWidth, imageHeight, radius, 
+            imageResultB);
+
+    double answersH[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 101./9., 2*101./9., 2*101./9., 101./9., 0.00, 0.00,
+        0.00, 0.00, 0.00, 101./9., 2*101./9., 2*101./9., 101./9., 0.00, 0.00,
+        0.00, 0.00, 0.00, 101./9., 2*101./9., 2*101./9., 101./9., 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f],", imageResultB[i], answersH[i]);
+        }
+        assert (fabs(imageResultB[i] - answersH[i]) < CLOSE);
+    }
+    printf("\nPASS\n");
+
+    reset();
+
+    imageBufferB[imageNumPix / 2 - imageWidth] = 101.0;
+    imageBufferB[imageNumPix / 2] = 101.0;
+
+    boxcarFilterImage(imageBufferB, 0, 0, imageWidth, imageHeight, radius, 
+            imageResultB);
+
+    double answersV[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 101./9, 101./9, 101./9., 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 2*101./9., 2*101./9., 2*101./9., 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 2*101./9., 2*101./9., 2*101./9., 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 101./9., 101./9., 101./9., 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%06.3f - %06.3f],", imageResultB[i], answersV[i]);
+        }
+        assert (fabs(imageResultB[i] - answersV[i]) < CLOSE);
+    }
+    printf("\nPASS\n");
+
+
+}
+
+
+void test_boxcarFilterImage_edge(void) {
+    printf("\ntest_boxcarFilterImage_edge\n");
+
+    int imageWidth = CAMERA_WIDTH;
+    int imageHeight = CAMERA_HEIGHT;
+    uint32_t imageNumPix = imageWidth * imageHeight;
+    int radius = 1;
+
+    // ========================================================================
+    // LEFT
+    // ========================================================================
+    reset();
+
+    imageBufferB[imageNumPix * 2] = 101.0;
+
+    boxcarFilterImage(imageBufferB, 0, 0, imageWidth, imageHeight, radius, 
+            imageResultB);
+
+    double Lanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%09.6f]", imageResultB[i] - Lanswers[i]);
+        }
+        assert (fabs(imageResultB[i] - Lanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // TOP LEFT
+    // ========================================================================
+    reset();
+
+    imageBufferB[0] = 101.0;
+
+    boxcarFilterImage(imageBufferB, 0, 0, imageWidth, imageHeight, radius, 
+            imageResultB);
+
+    float TLanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 101./9., 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%012.9f]", imageResultB[i] - TLanswers[i]);
+        }
+        assert (fabs(imageResultB[i] - TLanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // TOP RIGHT
+    // ========================================================================
+    reset();
+
+    imageBufferB[imageWidth - 1] = 101.0;
+    boxcarFilterImage(imageBufferB, 0, 0, imageWidth, imageHeight, radius, 
+            imageResultB);
+
+    double TRanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 101./9., 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%09.6f]", imageResultB[i] - TRanswers[i]);
+        }
+        assert (fabs(imageResultB[i] - TRanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // BOTTOM LEFT
+    // ========================================================================
+    reset();
+
+    imageBufferB[imageNumPix - imageWidth] = 101.0;
+    boxcarFilterImage(imageBufferB, 0, 0, imageWidth, imageHeight, radius, 
+            imageResultB);
+
+    double BLanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 101./9., 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%09.6f]", imageResultB[i] - BLanswers[i]);
+        }
+        assert (fabs(imageResultB[i] - BLanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+
+    // ========================================================================
+    // BOTTOM RIGHT
+    // ========================================================================
+    reset();
+
+    imageBufferB[imageNumPix - 1] = 101.0;
+    boxcarFilterImage(imageBufferB, 0, 0, imageWidth, imageHeight, radius, 
+            imageResultB);
+
+    double BRanswers[81] = {
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 101./9., 0.00,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+    };
+
+    for (unsigned int i = 0; i < imageNumPix; i++) {
+        if (verbose) {
+            if (0 == i % imageWidth) {
+                printf("\n");
+            }
+            printf("[%09.6f]", imageResultB[i] - BRanswers[i]);
+        }
+        assert (fabs(imageResultB[i] - BRanswers[i]) < CLOSE);
+    }
+
+    printf("\nPASS\n");
+}
+
+
+int main(int argc, char* argv[]) {
+    test_doConvolution3x3_Gaussian();
+    // test_doConvolution3x3_perf();
+
+    test_doConvolutionNxN_3x3();
+    test_doConvolutionNxN_5x5();
+    test_doConvolutionNxN_edge();
+    // test_doConvolutionNxN_perf();
+
+    test_doBoxcarNxN_3x3();
+    test_doBoxcarNxN_edge();
+    // test_doBoxcarNxN_perf();
+
+    test_boxcarFilterImage_3x3();
+    test_boxcarFilterImage_edge();
 
     return 0;
 }

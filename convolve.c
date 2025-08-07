@@ -1,5 +1,6 @@
 #include "convolve.h"
-
+#include "stdio.h"
+#include "stdlib.h"
 
 /**
  * @brief calculates various stats that require looping over the whole image
@@ -22,7 +23,7 @@ int imageStats(float* data, uint32_t n, float* pAverage, float* pMax,
     if (n < 1U) {
         return -1;
     }
-    for (uint32_t ii = 1; ii <= n; ii++) {
+    for (uint32_t ii = 0; ii < n; ii++) {
         float thisData = data[ii];
         summed += thisData;
         if (thisData >= max) {
@@ -50,9 +51,8 @@ int imageStats(float* data, uint32_t n, float* pAverage, float* pMax,
  * @param sideLength total side length of ROI
  * @param[out] pIdxTopLeft flattened array index of top-left ROI corner
  * @param[out] pIdxBottomRight flattened array index of bottom-right ROI corner
- * @return int -1 if failed, 0 otherwise
  */
-int calcROIcorners(
+void calcROIcorners(
     uint32_t idx,
     uint8_t sideLength,
     uint16_t imageWidth,
@@ -90,7 +90,6 @@ int calcROIcorners(
     } else {
         *pIdxTopLeft = (uint32_t)possibleTopLeft;
     }
-    return 0;
 }
 
 
@@ -106,21 +105,24 @@ int calcROIcorners(
  * 
  * @param[in] pImageBuffer overall image from which the ROI is read, flattened, row-
  * major order
- * @param ROIcenter center location index in the flattened image imageBuffer
+ * @param[in] pMask overall image mask, full of 1s or 0s for dealing with hot
+ * pixels
+ * @param ROIcenter center location index in the flattened image pImageBuffer
  * @param ROIsideLength requested ROI side length. Even values are promoted to
  * the next odd value to keep the ROI centered on ROIcenter.
- * @param imageWidth total width of image pointed to by imageBuffer, in pixels
- * @param imageNumPix total length of imageBuffer
+ * @param imageWidth total width of image pointed to by pImageBuffer, in pixels
+ * @param imageNumPix total length of pImageBuffer
  * @param[out] pROIbuffer array large enough to hold at least
  * (ROIsideLength + (1 - ROIsideLength % 2))^2 values
  * @param[out] pROInumPixRead the actual number of pixels read from the ROI. Use this
  * to safely read the returned ROIbuffer.
- * @param[out] pROIsideLengthRead the actual number side length of the ROI. Use
+ * @param[out] pROIsideLengthRead the actual side length of the ROI. Use
  * this to safely read the returned ROIbuffer.
- * @return -1 if failed, 0 otherwise 
+
  */
-int readROI(
+void readROI(
     float* pImageBuffer,
+    uint8_t* pMask,
     uint32_t ROIcenter,
     uint8_t ROIsideLength,
     uint16_t imageWidth,
@@ -129,12 +131,11 @@ int readROI(
     uint32_t* pROInumPixRead,
     uint8_t* pROIsideLengthRead)
 {
-    int ret = 0;
     uint32_t idxTopLeft = 0;
     uint32_t idxBottomRight = imageNumPix;
 
     // Get the start/stop indices within the larger array
-    ret = calcROIcorners(ROIcenter, ROIsideLength, imageWidth, imageNumPix, &idxTopLeft, &idxBottomRight);
+    calcROIcorners(ROIcenter, ROIsideLength, imageWidth, imageNumPix, &idxTopLeft, &idxBottomRight);
 
     uint16_t colTopLeft = idxTopLeft % imageWidth;
     uint16_t colBottomRight = idxBottomRight % imageWidth;
@@ -144,7 +145,7 @@ int readROI(
     // Never read outside the input buffer and stop after reaching the end of
     // the ROI
     while ((bufferIdx < imageNumPix) && (bufferIdx <= idxBottomRight)) {
-        pROIbuffer[ROIidx] = pImageBuffer[bufferIdx];
+        pROIbuffer[ROIidx] = pImageBuffer[bufferIdx] * pMask[bufferIdx];
         // Determine when to skip to the next ROI row start
         if ((bufferIdx % imageWidth) == colBottomRight) {
             // next index is same col as top left corner, and one row greater
@@ -161,7 +162,6 @@ int readROI(
     }
     *pROInumPixRead = ROIidx;
     *pROIsideLengthRead = (colBottomRight - colTopLeft >= 0) ? colBottomRight - colTopLeft + 1 : 0U;
-    return 0;
 }
 
 
@@ -172,19 +172,19 @@ int readROI(
  * order, left/right adjacent pixels are adjacent in the array, while top/
  * bottom pixels are `imageWidth` indices apart. For edge cases, return the
  * nearest valid neighbor.
- * @param[in] imageBuffer contiguous memory containing original pixel values
+ * @param[in] pImageBuffer contiguous memory containing original pixel values
  * @param pixelIndex raw row-major index into image memory
  * @param imageWidth number of columns in a single image row
  * @param imageNumPix number of columns x number of rows in image
- * @param[out] neighborhood 9-element array containing 3x3 block of pixels around
+ * @param[out] pNeighborhood 9-element array containing 3x3 block of pixels around
  * `pixelIndex`
  */
-void getNeighborhoodNearest(
-    float* imageBuffer,
+void getNeighborhood3x3(
+    float* pImageBuffer,
     uint32_t pixelIndex,
     uint16_t imageWidth,
     uint32_t imageNumPix,
-    float* neighborhood)
+    float* pNeighborhood)
 {
     // Clawing back a couple of instructions due to repeated ops
     int64_t above = pixelIndex + imageWidth;
@@ -216,113 +216,113 @@ void getNeighborhoodNearest(
 
     if (!isLeft && !isBottom && !isRight && !isTop) {
         // We're just normal men...we're just ordinary men...
-        neighborhood[0] = imageBuffer[idxBL];
-        neighborhood[1] = imageBuffer[idxB];
-        neighborhood[2] = imageBuffer[idxBR];
-        neighborhood[3] = imageBuffer[idxL];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxR];
-        neighborhood[6] = imageBuffer[idxTL];
-        neighborhood[7] = imageBuffer[idxT];
-        neighborhood[8] = imageBuffer[idxTR];
+        pNeighborhood[0] = pImageBuffer[idxBL];
+        pNeighborhood[1] = pImageBuffer[idxB];
+        pNeighborhood[2] = pImageBuffer[idxBR];
+        pNeighborhood[3] = pImageBuffer[idxL];
+        pNeighborhood[4] = pImageBuffer[idxC];
+        pNeighborhood[5] = pImageBuffer[idxR];
+        pNeighborhood[6] = pImageBuffer[idxTL];
+        pNeighborhood[7] = pImageBuffer[idxT];
+        pNeighborhood[8] = pImageBuffer[idxTR];
         return;
     }
     // Less common cases: edge pixel
     if (isBottom && !isLeft && !isRight) {
-        neighborhood[0] = imageBuffer[idxL];
-        neighborhood[1] = imageBuffer[idxC];
-        neighborhood[2] = imageBuffer[idxR];
-        neighborhood[3] = imageBuffer[idxL];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxR];
-        neighborhood[6] = imageBuffer[idxTL];
-        neighborhood[7] = imageBuffer[idxT];
-        neighborhood[8] = imageBuffer[idxTR];
+        pNeighborhood[0] = pImageBuffer[idxL];
+        pNeighborhood[1] = pImageBuffer[idxC];
+        pNeighborhood[2] = pImageBuffer[idxR];
+        pNeighborhood[3] = pImageBuffer[idxL];
+        pNeighborhood[4] = pImageBuffer[idxC];
+        pNeighborhood[5] = pImageBuffer[idxR];
+        pNeighborhood[6] = pImageBuffer[idxTL];
+        pNeighborhood[7] = pImageBuffer[idxT];
+        pNeighborhood[8] = pImageBuffer[idxTR];
         return;
     }
     if (isLeft && !isTop && !isBottom) {
-        neighborhood[0] = imageBuffer[idxB];
-        neighborhood[1] = imageBuffer[idxB];
-        neighborhood[2] = imageBuffer[idxBR];
-        neighborhood[3] = imageBuffer[idxC];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxR];
-        neighborhood[6] = imageBuffer[idxT];
-        neighborhood[7] = imageBuffer[idxT];
-        neighborhood[8] = imageBuffer[idxTR];
+        pNeighborhood[0] = pImageBuffer[idxB];
+        pNeighborhood[1] = pImageBuffer[idxB];
+        pNeighborhood[2] = pImageBuffer[idxBR];
+        pNeighborhood[3] = pImageBuffer[idxC];
+        pNeighborhood[4] = pImageBuffer[idxC];
+        pNeighborhood[5] = pImageBuffer[idxR];
+        pNeighborhood[6] = pImageBuffer[idxT];
+        pNeighborhood[7] = pImageBuffer[idxT];
+        pNeighborhood[8] = pImageBuffer[idxTR];
         return;
     }
     if (isRight && !isTop && !isBottom) {
-        neighborhood[0] = imageBuffer[idxBL];
-        neighborhood[1] = imageBuffer[idxB];
-        neighborhood[2] = imageBuffer[idxB];
-        neighborhood[3] = imageBuffer[idxL];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxC];
-        neighborhood[6] = imageBuffer[idxTL];
-        neighborhood[7] = imageBuffer[idxT];
-        neighborhood[8] = imageBuffer[idxT];
+        pNeighborhood[0] = pImageBuffer[idxBL];
+        pNeighborhood[1] = pImageBuffer[idxB];
+        pNeighborhood[2] = pImageBuffer[idxB];
+        pNeighborhood[3] = pImageBuffer[idxL];
+        pNeighborhood[4] = pImageBuffer[idxC];
+        pNeighborhood[5] = pImageBuffer[idxC];
+        pNeighborhood[6] = pImageBuffer[idxTL];
+        pNeighborhood[7] = pImageBuffer[idxT];
+        pNeighborhood[8] = pImageBuffer[idxT];
         return;
     }
     if (isTop && !isLeft && !isRight) {
-        neighborhood[0] = imageBuffer[idxBL];
-        neighborhood[1] = imageBuffer[idxB];
-        neighborhood[2] = imageBuffer[idxBR];
-        neighborhood[3] = imageBuffer[idxL];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxR];
-        neighborhood[6] = imageBuffer[idxL];
-        neighborhood[7] = imageBuffer[idxC];
-        neighborhood[8] = imageBuffer[idxR];
+        pNeighborhood[0] = pImageBuffer[idxBL];
+        pNeighborhood[1] = pImageBuffer[idxB];
+        pNeighborhood[2] = pImageBuffer[idxBR];
+        pNeighborhood[3] = pImageBuffer[idxL];
+        pNeighborhood[4] = pImageBuffer[idxC];
+        pNeighborhood[5] = pImageBuffer[idxR];
+        pNeighborhood[6] = pImageBuffer[idxL];
+        pNeighborhood[7] = pImageBuffer[idxC];
+        pNeighborhood[8] = pImageBuffer[idxR];
         return;
     }
     // Least common cases: corner pixel
     if (isBottom && isLeft) {
-        neighborhood[0] = imageBuffer[idxC];
-        neighborhood[1] = imageBuffer[idxC];
-        neighborhood[2] = imageBuffer[idxR];
-        neighborhood[3] = imageBuffer[idxC];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxR];
-        neighborhood[6] = imageBuffer[idxT];
-        neighborhood[7] = imageBuffer[idxT];
-        neighborhood[8] = imageBuffer[idxTR];
+        pNeighborhood[0] = pImageBuffer[idxC];
+        pNeighborhood[1] = pImageBuffer[idxC];
+        pNeighborhood[2] = pImageBuffer[idxR];
+        pNeighborhood[3] = pImageBuffer[idxC];
+        pNeighborhood[4] = pImageBuffer[idxC];
+        pNeighborhood[5] = pImageBuffer[idxR];
+        pNeighborhood[6] = pImageBuffer[idxT];
+        pNeighborhood[7] = pImageBuffer[idxT];
+        pNeighborhood[8] = pImageBuffer[idxTR];
         return;
     }
     if (isBottom && isRight) {
-        neighborhood[0] = imageBuffer[idxL];
-        neighborhood[1] = imageBuffer[idxC];
-        neighborhood[2] = imageBuffer[idxC];
-        neighborhood[3] = imageBuffer[idxL];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxC];
-        neighborhood[6] = imageBuffer[idxTL];
-        neighborhood[7] = imageBuffer[idxT];
-        neighborhood[8] = imageBuffer[idxT];
+        pNeighborhood[0] = pImageBuffer[idxL];
+        pNeighborhood[1] = pImageBuffer[idxC];
+        pNeighborhood[2] = pImageBuffer[idxC];
+        pNeighborhood[3] = pImageBuffer[idxL];
+        pNeighborhood[4] = pImageBuffer[idxC];
+        pNeighborhood[5] = pImageBuffer[idxC];
+        pNeighborhood[6] = pImageBuffer[idxTL];
+        pNeighborhood[7] = pImageBuffer[idxT];
+        pNeighborhood[8] = pImageBuffer[idxT];
         return;
     }
     if (isTop && isLeft) {
-        neighborhood[0] = imageBuffer[idxB];
-        neighborhood[1] = imageBuffer[idxB];
-        neighborhood[2] = imageBuffer[idxBR];
-        neighborhood[3] = imageBuffer[idxC];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxR];
-        neighborhood[6] = imageBuffer[idxC];
-        neighborhood[7] = imageBuffer[idxC];
-        neighborhood[8] = imageBuffer[idxR];
+        pNeighborhood[0] = pImageBuffer[idxB];
+        pNeighborhood[1] = pImageBuffer[idxB];
+        pNeighborhood[2] = pImageBuffer[idxBR];
+        pNeighborhood[3] = pImageBuffer[idxC];
+        pNeighborhood[4] = pImageBuffer[idxC];
+        pNeighborhood[5] = pImageBuffer[idxR];
+        pNeighborhood[6] = pImageBuffer[idxC];
+        pNeighborhood[7] = pImageBuffer[idxC];
+        pNeighborhood[8] = pImageBuffer[idxR];
         return;
     }
     if (isTop && isRight) {
-        neighborhood[0] = imageBuffer[idxBL];
-        neighborhood[1] = imageBuffer[idxB];
-        neighborhood[2] = imageBuffer[idxB];
-        neighborhood[3] = imageBuffer[idxL];
-        neighborhood[4] = imageBuffer[idxC];
-        neighborhood[5] = imageBuffer[idxC];
-        neighborhood[6] = imageBuffer[idxL];
-        neighborhood[7] = imageBuffer[idxC];
-        neighborhood[8] = imageBuffer[idxC];
+        pNeighborhood[0] = pImageBuffer[idxBL];
+        pNeighborhood[1] = pImageBuffer[idxB];
+        pNeighborhood[2] = pImageBuffer[idxB];
+        pNeighborhood[3] = pImageBuffer[idxL];
+        pNeighborhood[4] = pImageBuffer[idxC];
+        pNeighborhood[5] = pImageBuffer[idxC];
+        pNeighborhood[6] = pImageBuffer[idxL];
+        pNeighborhood[7] = pImageBuffer[idxC];
+        pNeighborhood[8] = pImageBuffer[idxC];
         return;
     }
 }
@@ -334,22 +334,22 @@ void getNeighborhoodNearest(
  * 
  * @param[in] array the input array to be considered; intended to be the output of
  * `getNeighborhood`
- * @param kernel the convolution kernel. Don't pass arrays of other types in
+ * @param pKernel the convolution kernel. Don't pass arrays of other types in
  * here, you heathen.
  * @return the result of the convolution
  */
-float convolve9(float* array, float* kernel)
+float convolve9(float* pArray, float* pKernel)
 {
     return (
-        array[0] * kernel[8] +
-        array[1] * kernel[7] +
-        array[2] * kernel[6] +
-        array[3] * kernel[5] +
-        array[4] * kernel[4] +
-        array[5] * kernel[3] +
-        array[6] * kernel[2] +
-        array[7] * kernel[1] +
-        array[8] * kernel[0]
+        pArray[0] * pKernel[8] +
+        pArray[1] * pKernel[7] +
+        pArray[2] * pKernel[6] +
+        pArray[3] * pKernel[5] +
+        pArray[4] * pKernel[4] +
+        pArray[5] * pKernel[3] +
+        pArray[6] * pKernel[2] +
+        pArray[7] * pKernel[1] +
+        pArray[8] * pKernel[0]
     );
 }
 
@@ -359,32 +359,172 @@ float convolve9(float* array, float* kernel)
  * 
  * @details Proceeds over the contiguous image buffer pixel-by-pixel,
  * convolving the 3x3 neighborhood of each pixel with the supplied 3x3 kernel.
- * This version is intended for integer-valued kernels, i.e., boxcar, Sobel 
- * filtering, or even Gaussian filtering before dividing by the normalization.
- * The primary application will be autofocusing. For filtering large-scale
- * noise like PMCs, a variable-radius filter is required.
+ * For filtering large-scale noise like PMCs, a variable-radius filter is
+ * required.
  * 
- * @param[in] imageBuffer
+ * @param[in] pImageBuffer
  * @param imageWidth 
  * @param imageNumPix 
- * @param[in] mask hot pixel mask, whether or not to include pixel in calculations
- * @param[in] kernel 
- * @param kernelSize 
- * @param[out] imageResult 
+ * @param[in] pMask hot pixel mask, whether or not to include pixel in calculations
+ * @param[in] pKernel 
+ * @param[out] pImageResult 
  */
-void doConvolution(
-    float* imageBuffer,
+void doConvolution3x3(
+    float* pImageBuffer,
+    uint8_t* pMask,
     uint16_t imageWidth,
     uint32_t imageNumPix,
-    unsigned char* mask,
-    float* kernel,
-    uint8_t kernelSize,
-    float* imageResult)
+    float* pKernel,
+    float* pImageResult)
 {
     // statically allocate this array for (re)use throughout the run
-    float neighborhood[9] = {0.0};
+    float pNeighborhood[9] = {0.0};
     for (uint32_t i = 0; i < imageNumPix; i++) {
-        getNeighborhoodNearest(imageBuffer, i, imageWidth, imageNumPix, neighborhood);
-        imageResult[i] = convolve9(neighborhood, kernel) * (float)(mask[i]);
+        getNeighborhood3x3(pImageBuffer, i, imageWidth, imageNumPix, pNeighborhood);
+        pImageResult[i] = convolve9(pNeighborhood, pKernel) * (float)(pMask[i]);
+    }
+}
+
+
+/**
+ * @brief Implements an NxN convolution over the image, where N is an odd
+ * number <= MAX_CONVOLVE_SIDE_LEN. N > MAX_CONVOLVE_SIDE_LEN will be limited to
+ * MAX_CONVOLVE_SIDE_LEN (15 by default).
+ * 
+ * @details Proceeds over the contiguous image buffer pixel-by-pixel,
+ * convolving the NxN neighborhood of each pixel with the supplied NxN kernel.
+ * A border of pixels N // 2 (integer division) will be identical to the 
+ * original contents of imageResult. The closest scipy/astropy equivalent is
+ * astropy.convolve(boundary=None), but instead of setting the edges to 0, they
+ * are unchanged from whatever imageResult originally contained. This avoids a
+ * fair bit of complicated and expensive edge handling, but it could be
+ * improved.
+ * 
+ * So, if you'd like the border to be all zeros, pass a zero-filled array, or if
+ * you'd like the result unchanged from the original image, memcpy it into
+ * imageResult first.
+ * 
+ * @note If filtering an image in order to implement an unsharp mask (high-pass
+ * filter), pass in a 0s pImageResult. Subtracting the result from the original
+ * image will leave the border unchanged from the original image. If you memcpy
+ * first, the border of the unsharp masked image will be original - original = 0
+ * 
+ * @param[in] pImageBuffer flattened image array
+ * @param[in] pMask flattened mask array for dealing with hot pixels
+ * @param imageWidth 
+ * @param imageNumPix 
+ * @param[in] pMask hot pixel mask, whether or not to include pixel in calculations
+ * @param[in] pKernel array of length N times N, N < 16
+ * @param[in] kernelSideLength N
+ * @param[out] pImageResult
+ */
+void doConvolutionNxN(
+    float* pImageBuffer,
+    uint8_t* pMask,
+    uint16_t imageWidth,
+    uint32_t imageNumPix,
+    float* pKernel,
+    uint8_t kernelSideLength,
+    float* pImageResult)
+{
+    // allocate this array for (re)use throughout the run. Arrays
+    // smaller than MAX_CONVOLVE_SIDE_LEN will simply not need the trailing
+    // elements.
+    float pNeighborhood[MAX_CONVOLVE_SIDE_LEN * MAX_CONVOLVE_SIDE_LEN] = {0.0};
+    // Limit the used kernel to a sane size for convolution.
+    // "Sane size" depends on your image size and tolerance for latency, mostly.
+    if (kernelSideLength > MAX_CONVOLVE_SIDE_LEN) {
+        kernelSideLength = MAX_CONVOLVE_SIDE_LEN;
+    }
+    if (kernelSideLength > imageWidth) {
+        kernelSideLength = imageWidth;
+    }
+    // Calculate the border size required for this kernel. Note integer division
+    int8_t borderSize = kernelSideLength / 2;
+    uint16_t kernelNumPix = kernelSideLength * kernelSideLength;
+
+    // Calculate the start/stop indices in the overall array, given this border
+    // size.
+    uint32_t startIdx = (imageWidth * borderSize) + borderSize;
+    uint32_t stopIdx = imageNumPix - startIdx;
+    uint32_t ii = startIdx;
+    while (ii < stopIdx) {
+        uint32_t pROInumPixRead = 0U;
+        uint8_t pROIsideLengthRead = 0U;
+        // Read a NxN block centered on ii into the allocated buffer
+        readROI(pImageBuffer, pMask, ii, kernelSideLength, imageWidth, 
+            imageNumPix, pNeighborhood, &pROInumPixRead, &pROIsideLengthRead);
+
+        // Direct kernel convolution
+        float convolution = 0.0;
+        for (uint8_t jj = 0; jj < pROInumPixRead; jj++) {
+            // pNeighborhood is masked in readROI()
+            convolution += pNeighborhood[jj] * pKernel[kernelNumPix - 1 - jj];
+        }
+        pImageResult[ii] = convolution;
+
+        // After reaching the border, skip to the next row.
+        if (0 == ((ii + borderSize + 1) % imageWidth)) {
+            // new index is same col as start index, and one row greater
+            // than current row:
+            // ((i / imageWidth)) is current row
+            // ((i / imageWidth) + 1) is one row greater than current,
+            // ((i / imageWidth) + 1) * imageWidth is the index of the
+            // beginning of that row, borderSize is the offset into that row.
+            ii = (ii / imageWidth + 1) * imageWidth + borderSize;
+        } else {
+            ii++;
+        }
+    }
+}
+
+/**
+ * @brief Simple boxcar filter, separated in vertical/horizontal directions.
+ * Does not preserve flux in a region radius from the edge.
+ * 
+ * @param pImageBuffer 
+ * @param pMask 
+ * @param imageWidth 
+ * @param imageNumPix 
+ * @param radius 
+ * @param pIntermediate supply a buffer to use as temporary storage
+ * @param pImageResult 
+ */
+void doBoxcarNxN(
+    float* pImageBuffer,
+    uint8_t* pMask,
+    uint16_t imageWidth,
+    uint32_t imageNumPix,
+    uint8_t radius,
+    float* pIntermediate,
+    float* pImageResult)
+{
+    uint16_t imageHeight = imageNumPix / imageWidth;
+    float kernelNorm = (float)(2 * radius + 1);
+    kernelNorm *= kernelNorm;
+    // Separable filter: rows first, then columns
+    // row-wise boxcar
+    uint16_t stopRow = imageHeight - radius - 1;
+    uint16_t stopCol = imageWidth - radius - 1;
+    for (uint16_t row = radius; row < stopRow; row++) {
+        for (uint16_t col = radius; col < stopCol; col++) {
+            uint32_t idx = row * imageWidth + col;
+            float avg = 0.0;
+            for (int16_t ri = -radius; ri <= radius; ri++) {
+                avg += pImageBuffer[idx + ri] * pMask[idx + ri];
+            }
+            pIntermediate[idx] = avg;
+        }
+    }
+    // col-wise boxcar
+    for (uint16_t col = radius; col < stopCol; col++) {
+        for (uint16_t row = radius; row < stopRow; row++) {
+            uint32_t idx = row * imageWidth + col;
+            float avg = 0.0;
+            for (int16_t ri = -radius; ri <= radius; ri++) {
+                avg += pIntermediate[idx + ri * imageWidth] * pMask[idx + ri * imageWidth];
+            }
+            pImageResult[idx] = avg / kernelNorm;
+        }
     }
 }

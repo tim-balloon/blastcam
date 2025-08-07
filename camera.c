@@ -18,6 +18,7 @@
 #include "sc_data_structures.h"
 #include "fits_utils.h"
 #include "timer.h"
+#include "convolve.h"
 
 
 #define AF_ALGORITHM_NEW
@@ -98,6 +99,10 @@ int default_focus_photos = 3;
 int buffer_num, mem_id;
 uint16_t * memory, * mem_starting_ptr; //we want raw bytes
 unsigned char * mask;
+// some dedicated arrays for use in binned AF routine
+float imageFloatIn[CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR)] = {0.0};
+float sobelResult[CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR)] = {0.0};
+unsigned char binnedMask[CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR)] = {0};
 
 struct timeval metadataTv;
 
@@ -2596,6 +2601,125 @@ int measureSharpness(double* pSharpness)
 
 
 /**
+ * @brief Measure image sharpness using the our own methods
+ * 
+ * @param pSharpness to double to store sharpness value
+ * @return int status: -1 for failure, 0 otherwise.
+ */
+int measureSharpnessDIY(double* pSharpness)
+{
+    START(tstart);
+    int ret = 0;
+    int binnedImageNumPix = CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR);
+
+    uint16_t kernelSize = 9;
+    // We use the sobel Y kernel because we assume 2 things:
+    // * the sensor x-axis is aligned with the horizon
+    // * we scan primarily in azimuth, so any blurring will primarily be in x,
+    //   making the Y-gradient a more reliable metric than x.
+    // Otherwise, it probably doesn't matter, since stars are round.
+    float sobelKernelY[9] = {-1., -2., -1., 0., 0., 0., 1., 2., 1.};
+
+    static bool firstTime = 1;
+    if (firstTime) {
+        memset(binnedMask, 1, sizeof(binnedMask));
+        firstTime = 0;
+    }
+
+    peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
+    double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
+    getExposureTime(&actualExpTimeMs);
+    uint32_t three_frame_times_timeout_ms = (uint32_t)(3000.0 * actualExpTimeMs + 0.5);
+
+    if (verbose) {
+        printf("measureSharpness: Waiting for frame...\n");
+    }
+
+    // ---------------------------------------------------------------------- //
+    // Actual data transfer
+    // ---------------------------------------------------------------------- //
+    // wait for image transfer
+    peak_status status = peak_Acquisition_WaitForFrame(hCam,
+        three_frame_times_timeout_ms, &hFrame);
+    if(status == PEAK_STATUS_TIMEOUT) {
+        fprintf(stderr, "ERROR: WaitForFrame timed out after 3 frame times.\n");
+        return -1;
+    } else if(status == PEAK_STATUS_ABORTED) {
+        fprintf(stderr, "ERROR: WaitForFrame aborted by camera.\n");
+        return -1;
+    } else if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: WaitForFrame failed.\n");
+        return -1;
+    }
+
+    // At this point we successfully got a frame handle. We need to release it
+    // when done!
+    if(peak_Frame_IsComplete(hFrame) == PEAK_FALSE) {
+        printf("WARNING: Incomplete frame transfer.\n");
+    }
+
+    if (verbose) {
+        printf("imageTransfer: Got frame, unpacking...\n");
+    }
+
+    // get image from frame handle
+    peak_buffer buffer = {NULL, 0, NULL};
+    status = peak_Frame_Buffer_Get(hFrame, &buffer);
+    if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: Failed to get buffer from frame.\n");
+        return -1;
+    }
+    unpack_mono12((uint16_t *)buffer.memoryAddress, unpacked_image,
+        binnedImageNumPix);
+
+    // measure sharpness
+    // convolution needs floats
+    for (unsigned int i = 0; i < binnedImageNumPix; i++) {
+        imageFloatIn[i] = (float)unpacked_image[i];
+    }
+
+    // Used for normalizing the contrast metric
+    float imageAverage = 0.0;
+    float imageMax = 0.0;
+    uint32_t imageMaxIdx = 0U;
+    // TODO(evanmayer): check retval
+
+    imageStats(imageFloatIn, (uint32_t)binnedImageNumPix, &imageAverage, &imageMax,
+        &imageMaxIdx);
+
+    doConvolution3x3(imageFloatIn, binnedMask,
+        CAMERA_WIDTH / CAMERA_FOCUS_BINFACTOR, (uint32_t)binnedImageNumPix,
+        sobelKernelY, sobelResult);
+
+    // Let the sharpness metric be the sum of squared gradients, as
+    // estimated by the Sobel operator
+    double sobelMetric = 0.0;
+    for (uint32_t i = 0; i < binnedImageNumPix; i++) {
+        sobelMetric += sobelResult[i] * sobelResult[i];
+    }
+
+    // We normalize by something proportional to the shot noise in the
+    // image to handle cases where the shot noise, and thus the sum of
+    // squared gradients, is changing rapidly during an AF run
+    if (imageAverage > 1) {
+        sobelMetric /= imageAverage;
+    }
+    // divide by # px because metric is usually quite high - better for display
+    *pSharpness = sobelMetric / binnedImageNumPix;
+
+    status = peak_Frame_Release(hCam, hFrame);
+    if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: Frame_Release failed.\n");
+        ret = -1;
+    }
+    STOP(tend);
+    DISPLAY_DELTA("sharpness time", DELTA(tend, tstart));
+
+    return ret;
+}
+
+
+/**
  * @brief Ensures peak IPL hot pixel compensation is on, sets it to maximum, and
  * re-makes the hot pixel list.
  * 
@@ -3403,7 +3527,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         taking_image = 0;
 
         double sharpness = 0.0;
-        if (measureSharpness(&sharpness) < 0) {
+        if (measureSharpnessDIY(&sharpness) < 0) {
             fprintf(stderr, "Could not complete sharpness measurement: %s.\n", 
             strerror(errno));
             all_camera_params->focus_mode = 0;
