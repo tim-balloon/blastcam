@@ -1,3 +1,50 @@
+// Parts of this code are provided by the astrometry.net developers under a
+// BSD-3 license:
+// timenow(), timer_callback(), struct callbackdata
+// The license follows.
+// https://github.com/dstndstn/astrometry.net/blob/6c3a49f623fb165bc703792066978790f96bba34/LICENSE
+
+// =============================================================================
+// NOTE: Parts of the code written by the Astrometry.net Team are
+// licensed under the 3-clause BSD-style license below.  HOWEVER, since
+// this code uses libraries licensed under the GNU GPL (including a
+// vendored GSL), the whole work must be distributed under the GPL
+// version 3 or later.
+
+
+// Copyright (c) 2006-2015, Astrometry.net Developers
+
+// All rights reserved.
+
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+
+// * Redistributions of source code must retain the above copyright
+//   notice, this list of conditions and the following disclaimer.
+
+// * Redistributions in binary form must reproduce the above copyright
+//   notice, this list of conditions and the following disclaimer in the
+//   documentation and/or other materials provided with the distribution.
+
+// * Neither the name of the Astrometry.net Team nor the names of its
+//   contributors may be used to endorse or promote products derived from
+//   this software without specific prior written permission.
+
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// =============================================================================
+
+
 #include <stdlib.h>
 #include <math.h>
 #include <errno.h>
@@ -13,6 +60,7 @@
 #include <astrometry/errors.h>
 #include <astrometry/fileutils.h>
 #include <sofa.h>
+#include <sys/time.h>
 
 #include "camera.h"
 #include "astrometry.h"
@@ -28,9 +76,7 @@
 
 engine_t * engine = NULL;
 solver_t * solver = NULL;
-int solver_timelimit;
-
-struct mcp_astrometry mcp_astro;
+struct callbackdata cb;
 
 
 /* Astrometry parameters global structure, accessible from commands.c as well */
@@ -52,36 +98,45 @@ struct astrometry all_astro_params = {
     .sigma_pointing_as = 0,
 };
 
-/* Function to decrement a counter for tracking Astrometry timeout.
-** Input: The pointer to the counter.
-** Output: If the counter has reached zero yet (or not).
-*/
-time_t timeout(void * arg) {
-    int * counter = (int *) arg;
+struct callbackdata {
+    solver_t* solver;
+    float max_cpu_time;
+    float max_wall_time;
+    double wall_start;
+};
 
-    if (*(counter) != 0) {
-        if (verbose) {
-            printf("Have yet to solve Astrometry. Decrementing time "
-                   "counter...\n");
-        }
-
-        (*counter)--;
-
-        if (verbose) {
-            printf("Timeout counter is now %d.\n", *counter);
-        }
-    } 
-
-    // if we are shutting down, we don't want to keep trying to solve (we just
-    // want to abort altogether)
-    if (shutting_down) {
-        if (verbose) {
-            printf("Shutting down -> zeroing timeout counter.\n");
-        }
-        *counter = 0;
+// Helper for measuring wallclock time for timeout
+double timenow() {
+    struct timeval tv;
+    if (gettimeofday(&tv, NULL)) {
+        ERROR("Failed to get time of day");
+        return -1.0;
     }
+    return (double)(tv.tv_sec - 3600*24*365*30) + tv.tv_usec * 1e-6;
+}
 
-    return (*counter != 0);
+
+// This callback will be called every second during solve-field
+static time_t timer_callback(void* userdata) {
+    struct callbackdata* cb = userdata;
+    double walltime = timenow() - cb->wall_start;
+    if (verbose) {
+        printf("astrometry.net timer_callback. CPU time used: %f, wall time %f, best logodds %f\n",
+           solver->timeused, walltime, solver->best_logodds);
+    }
+    if ((cb->max_wall_time > 0) && (walltime > cb->max_wall_time)) {
+        if (verbose) {
+            printf("max wall time exceeded; exiting\n");
+        }
+        solver->quit_now = TRUE;
+    }
+    if ((cb->max_cpu_time > 0) && (solver->timeused > cb->max_cpu_time)) {
+        if (verbose) {
+            printf("max CPU time exceeded; exiting\n");
+        }
+        solver->quit_now = TRUE;
+    }
+    return 1;
 }
 
 
@@ -104,9 +159,14 @@ int initAstrometry() {
     }
 
     // set solver timeout
-    solver_timelimit = (int) all_astro_params.timelimit;
-    solver->timer_callback = timeout;
-    solver->userdata = &solver_timelimit;
+    cb.solver = solver;
+    solver->timer_callback = timer_callback;
+    cb.max_wall_time = all_astro_params.timelimit;
+    cb.wall_start = timenow();
+    // Differs from wall time if multicore...so, set to a huge number of
+    // seconds.
+    cb.max_cpu_time = 1200;
+    solver->userdata = &cb;
 
     return 1;
 }
@@ -143,9 +203,10 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
     FILE * fptr = NULL;
 
     // reset solver timeout
-    solver_timelimit = (int) all_astro_params.timelimit;
+    cb.wall_start = timenow();
+    cb.max_wall_time = all_astro_params.timelimit;
     if (verbose) {
-        printf("Astrom. timeout is %i cycles.\n", *((int *) solver->userdata));
+        printf("Astrom. timeout is %lf s.\n", cb.max_wall_time);
     }
 
     // set up solver configuration
@@ -301,14 +362,6 @@ int lostInSpace(double * star_x, double * star_y, double * star_mags, unsigned
         if (clock_gettime(CLOCK_REALTIME, &astrom_tp_end) == -1) {
             fprintf(stderr, "Error ending timer: %s.\n", strerror(errno));
         }
-        mcp_astro.dec_j2000 = dec;
-        mcp_astro.ra_j2000 = ra;
-        mcp_astro.dec_observed = dob*(180.0/M_PI);
-        mcp_astro.ra_observed = rob*(180.0/M_PI);
-        mcp_astro.image_rms = sigma_pointing_as;
-        // ECM: unsure if mcp_astro is even being used, since
-        // populate_astrometry_packet() exists and pulls from all_astro_params
-        mcp_astro.numBlobsFound = original_num_blobs;
         // update astro struct with telemetry
         all_astro_params.dec_j2000 = dec;
         all_astro_params.ra_j2000 = ra;

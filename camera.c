@@ -16,13 +16,12 @@
 #include "lens_adapter.h"
 #include "matrix.h"
 #include "sc_data_structures.h"
-// #include "convolve.h"
 #include "fits_utils.h"
-// #include "timer.h"
+#include "timer.h"
+#include "convolve.h"
 
 
-// #define AF_ALGORITHM_NEW
-// double deltaT = 0.0;
+#define AF_ALGORITHM_NEW
 
 void merge(double A[], int p, int q, int r, double X[],double Y[]);
 void part(double A[], int p, int r, double X[], double Y[]);
@@ -100,13 +99,18 @@ int default_focus_photos = 3;
 int buffer_num, mem_id;
 uint16_t * memory, * mem_starting_ptr; //we want raw bytes
 unsigned char * mask;
+// some dedicated arrays for use in binned AF routine
+float imageFloatIn[CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR)] = {0.0};
+float sobelResult[CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR)] = {0.0};
+unsigned char binnedMask[CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR)] = {0};
 
 struct timeval metadataTv;
 
-// struct timespec tstart = {0,0};
-// struct timespec tend = {0,0};
+double deltaT = 0.0;
+struct timespec tstart = {0,0};
+struct timespec tend = {0,0};
 
-uint16_t unpacked_image[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
+uint16_t unpacked_image[CAMERA_NUM_PX] = {0};
 // for printing camera errors
 const char * cam_error;
 // 'curr' = current, 'pc' = pixel clock, 'fps' = frames per sec, 
@@ -117,10 +121,6 @@ int curr_red_gain, curr_green_gain, curr_blue_gain, curr_gamma, curr_gain_boost;
 unsigned int curr_timeout;
 int bl_offset, bl_mode;
 int prev_dynamic_hp;
-
-// For realtime contrast AF
-// Have to declare here or we'd run out of stack space and mysterious-looking SEGFAULT
-// float sobelResult[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
 
 /* Blob parameters global structure (defined in camera.h) */
 struct blob_params all_blob_params = {
@@ -1244,8 +1244,6 @@ int initCamera(void)
     // // set how images are saved
     // setSaveImage();
 
-    // Image saving handled in imageTransfer()
-
     // In place of logging all sensor parameters to a text file, save off the
     // camera parameter file.
     // This file is human-readable, and can be used to replicate the device
@@ -1604,9 +1602,10 @@ int setCameraParams(void)
 
     // Set gamma to neutral. This is a formality, should already be 1.0
     double defaultGamma = 1.0;
+    peak_status status = PEAK_STATUS_SUCCESS;
     peak_access_status accessStatus = peak_Gamma_GetAccessStatus(hCam);
     if (PEAK_IS_WRITEABLE(accessStatus)) {
-        peak_status status = peak_Gamma_Set(hCam, defaultGamma);
+        status = peak_Gamma_Set(hCam, defaultGamma);
         if (!checkForSuccess(status)) {
             fprintf(stderr, "Setting gamma failed. Continuing.\n");
         }
@@ -2169,6 +2168,59 @@ int saveImageToDisk(char* filename, peak_frame_handle hFrame)
     }
     return ret;
 }
+
+
+/**
+ * @brief save the unprocessed image to disk as a comrpessed FITS file.
+ * @details this should be called AFTER submitting the image to astrometry,
+ * in order to avoid solution latency to the flight control software.
+ * 
+ * @param pUnpackedImage pointer to array of image bytes
+ * @return int -1 if failed, 0 otherwise
+ */
+int saveFITStoDisk(uint16_t* pUnpackedImage)
+{
+    int ret = 0;
+    // Record file creation date as str
+    time_t seconds = time(NULL);
+    struct tm* tm_info;
+    tm_info = gmtime(&seconds);
+    // if it is a leap year, adjust tm_info accordingly before it is passed to 
+    // calculations in lostInSpace
+    if (isLeapYear(tm_info->tm_year)) {
+        // if we are on Feb 29
+        if (tm_info->tm_yday == 59) {
+            // 366 days in a leap year
+            tm_info->tm_yday++;
+            // we are still in February 59 days after January 1st (Feb 29)
+            tm_info->tm_mon -= 1;
+            tm_info->tm_mday = 29;
+        } else if (tm_info->tm_yday > 59) {
+            tm_info->tm_yday++;
+        }
+    }
+    // Copy the creation date into the metadata struct
+    strftime(default_metadata.date, sizeof(default_metadata.date),
+        "%Y-%m-%d_%H-%M-%S", tm_info);
+
+    char FITSfilename[256] = "";
+    // Create the output filename
+    strftime(FITSfilename, sizeof(FITSfilename),
+        "/home/starcam/Desktop/TIMSC/img/"
+        "saved_image_%Y-%m-%d_%H-%M-%S.fits", tm_info);
+
+    snprintf(default_metadata.filename, sizeof(default_metadata.filename),
+        "%s", FITSfilename);
+
+    // Write the FITS File
+    int FITSstatus = writeImage(FITSfilename, pUnpackedImage, CAMERA_WIDTH,
+        CAMERA_HEIGHT, &default_metadata);
+    if (0 != FITSstatus) {
+        fprintf(stderr, "ERROR: writeImage failed.\n");
+        ret = -1;
+    }
+    return ret;
+}
 #endif
 
 
@@ -2242,7 +2294,7 @@ int imageTransfer(uint16_t* pUnpackedImage)
         return -1;
     }
 
-    unpack_mono12(pLocalMem, pUnpackedImage, CAMERA_WIDTH * CAMERA_HEIGHT);
+    unpack_mono12(pLocalMem, pUnpackedImage, CAMERA_NUM_PX);
 
     return 0;
 }
@@ -2316,18 +2368,15 @@ int imageTransfer(uint16_t* pUnpackedImage)
     if (verbose) {
         printf("imageTransfer: Unpacking image bytes: %ld into local buffer of "
             "size %ld\n", buffer.memorySize,
-            (sizeof(uint16_t) * CAMERA_WIDTH * CAMERA_HEIGHT));
+            (sizeof(uint16_t) * CAMERA_NUM_PX));
     }
 
     unpack_mono12((uint16_t *)buffer.memoryAddress, pUnpackedImage,
-        CAMERA_WIDTH * CAMERA_HEIGHT);
+        CAMERA_NUM_PX);
 
     // ---------------------------------------------------------------------- //
-    // Metadata handling and file saving
+    // Metadata handling
     // ---------------------------------------------------------------------- //
-    // if (saveImageToDisk(filename, hFrame) < 0) {
-    //     fprintf(stderr, "WARNING: Failed to save frame to disk.\n");
-    // }
 
     // Record the whole number and microsecond parts of the timestamp as the
     // time of observation start
@@ -2341,42 +2390,201 @@ int imageTransfer(uint16_t* pUnpackedImage)
     default_metadata.focus = (int16_t)all_camera_params.focus_position;
     default_metadata.aperture = (int16_t)all_camera_params.current_aperture;
 
-    // Record file creation date as str
-    time_t seconds = time(NULL);
-    struct tm* tm_info;
-    tm_info = gmtime(&seconds);
-    // if it is a leap year, adjust tm_info accordingly before it is passed to 
-    // calculations in lostInSpace
-    if (isLeapYear(tm_info->tm_year)) {
-        // if we are on Feb 29
-        if (tm_info->tm_yday == 59) {
-            // 366 days in a leap year
-            tm_info->tm_yday++;
-            // we are still in February 59 days after January 1st (Feb 29)
-            tm_info->tm_mon -= 1;
-            tm_info->tm_mday = 29;
-        } else if (tm_info->tm_yday > 59) {
-            tm_info->tm_yday++;
+    status = peak_Frame_Release(hCam, hFrame);
+    if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: Frame_Release failed.\n");
+        ret = -1;
+    }
+
+    return ret;
+}
+
+
+/**
+ * @brief Set the Binning Factor
+ * @details In order to change binning, we must stop and re-start acquisition.
+ * NOTE: binning will mess up GUI display of images, slightly. They should
+ * be readable, but reading an image of half-width into a full-width
+ * memory to send to the GUI will give two side-by-side images, where the
+ * images consist of every other row, and the memory of the last full-size
+ * image occupies the lower half of the memory.
+ * The way to fix would be to keep track of the image size when transmitting
+ * and receiving, extremely not worth it.
+ * 
+ * @param factor 
+ * @return int -1 if failed, 0 otherwise
+ */
+int setBinningFactor(uint8_t factor)
+{
+    int ret = 0;
+    peak_status status = PEAK_STATUS_SUCCESS;
+
+    // Stop acquisition if ongoing.
+    // If we fail to stop image acquisition, binning will fail, so fail AF.
+    if (PEAK_TRUE == peak_Acquisition_IsStarted(hCam)) {
+        status = peak_Acquisition_Stop(hCam);
+        if (!checkForSuccess(status)) {
+            fprintf(stderr, "ERROR: Failed to stop image acquisition. Exiting "
+                "anyway.\n");
+            return -1;
         }
     }
-    // Copy the creation date into the metadata struct
-    strftime(default_metadata.date, sizeof(default_metadata.date),
-        "%Y-%m-%d_%H-%M-%S", tm_info);
 
-    char FITSfilename[256] = "";
-    // Create the output filename
-    strftime(FITSfilename, sizeof(FITSfilename),
-        "/home/starcam/Desktop/TIMSC/img/"
-        "saved_image_%Y-%m-%d_%H-%M-%S.fits", tm_info);
+    // If we stopped acquisition, but we still don't have access to binning,
+    // attempt to restart acquisition but fail AF.
+    peak_access_status accessStatus = peak_BinningManual_GetAccessStatus(hCam,
+        PEAK_SUBSAMPLING_ENGINE_SENSOR);
+    if (PEAK_IS_WRITEABLE(accessStatus)) {
+        status = peak_BinningManual_Set(hCam, PEAK_SUBSAMPLING_ENGINE_FPGA,
+            (uint32_t)factor, (uint32_t)factor);
+        // If we could set binning, but it failed, attempt to restart
+        // acquisition but fail AF.
+        if(!checkForSuccess(status)) {
+            fprintf(stderr, "ERROR: setBinningFactor: setting factor %d "
+                "failed.\n", factor);
+            // Re-start acquisition. If we ever fail to re-start acquisition,
+            // exit.
+            status = peak_Acquisition_Start(hCam, PEAK_INFINITE);
+            if (!checkForSuccess(status)) {
+                fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
+                closeCamera();
+                exit(EXIT_FAILURE);
+            }
+            return -1;
+        }
+    } else {
+        fprintf(stderr, "ERROR: Setting binning factor failed. Binning factor "
+            "not writeable at this time, %d.\n", accessStatus);
+        // Re-start acquisition. If we ever fail to re-start acquisition, exit.
+        status = peak_Acquisition_Start(hCam, PEAK_INFINITE);
+        if (!checkForSuccess(status)) {
+            fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
+            closeCamera();
+            exit(EXIT_FAILURE);
+        }
+        return -1;
+    }
 
-    snprintf(default_metadata.filename, sizeof(default_metadata.filename),
-        "%s", FITSfilename);
+    // Re-start acquisition. If we ever fail to re-start acquisition, exit.
+    status = peak_Acquisition_Start(hCam, PEAK_INFINITE);
+    if (!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
+        closeCamera();
+        exit(EXIT_FAILURE);
+    }
 
-    // Write the FITS File
-    int FITSstatus = writeImage(FITSfilename, pUnpackedImage, CAMERA_WIDTH,
-        CAMERA_HEIGHT, &default_metadata);
-    if (0 != FITSstatus) {
-        fprintf(stderr, "ERROR: writeImage failed.\n");
+    return 0;
+}
+
+
+/**
+ * @brief set binning back to 1
+ * 
+ * @return int -1 if failed, 0 otherwise
+ */
+int restoreBinningFactor(void)
+{
+    int ret = 0;
+    if (setBinningFactor(1U) < 0) {
+        // normal operation depends on correct binning factor set
+        fprintf(stderr, "FATAL ERROR: restoreBinningFactor: failed to return "
+            "binning factor to 1.\n");
+        ret = -1;
+    }
+    return ret;
+}
+
+
+/**
+ * @brief Measure image sharpness using the peak IPL
+ * 
+ * @param pSharpness to double to store sharpness value
+ * @return int status: -1 for failure, 0 otherwise.
+ */
+int measureSharpness(double* pSharpness)
+{
+    START(tstart);
+    int ret = 0;
+    peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
+    double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
+    getExposureTime(&actualExpTimeMs);
+    uint32_t three_frame_times_timeout_ms = (uint32_t)(3000.0 * actualExpTimeMs + 0.5);
+
+    if (verbose) {
+        printf("measureSharpness: Waiting for frame...\n");
+    }
+
+    // ---------------------------------------------------------------------- //
+    // Actual data transfer
+    // ---------------------------------------------------------------------- //
+    // wait for image transfer
+    peak_status status = peak_Acquisition_WaitForFrame(hCam,
+        three_frame_times_timeout_ms, &hFrame);
+    if(status == PEAK_STATUS_TIMEOUT) {
+        fprintf(stderr, "ERROR: WaitForFrame timed out after 3 frame times.\n");
+        return -1;
+    } else if(status == PEAK_STATUS_ABORTED) {
+        fprintf(stderr, "ERROR: WaitForFrame aborted by camera.\n");
+        return -1;
+    } else if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: WaitForFrame failed.\n");
+        return -1;
+    }
+
+    // At this point we successfully got a frame handle. We need to release it
+    // when done!
+    if(peak_Frame_IsComplete(hFrame) == PEAK_FALSE) {
+        printf("WARNING: Incomplete frame transfer.\n");
+    }
+
+    if (verbose) {
+        printf("imageTransfer: Got frame, unpacking...\n");
+    }
+
+    // Only unpack to global application image memory if there's a GUI client
+    // who might receive it
+    if (num_clients > 0) {
+        // get image from frame handle
+        peak_buffer buffer = {NULL, 0, NULL};
+        status = peak_Frame_Buffer_Get(hFrame, &buffer);
+        if(!checkForSuccess(status)) {
+            fprintf(stderr, "ERROR: Failed to get buffer from frame.\n");
+            return -1;
+        }
+        unpack_mono12((uint16_t *)buffer.memoryAddress, unpacked_image,
+            CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR));
+    }
+
+    // measure sharpness
+    uint32_t border = 4U; // blank pixels around active array
+    peak_position offset = {
+        .x = border,
+        .y = border
+    };
+    peak_size size = {
+        .width = CAMERA_WIDTH / CAMERA_FOCUS_BINFACTOR,
+        .height = CAMERA_HEIGHT / CAMERA_FOCUS_BINFACTOR
+    };
+    peak_roi roi = {
+        .offset = offset,
+        .size = size
+    };
+    status = peak_ROI_Get(hCam, &roi);
+    if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: peak_ROI_Get failed.\n");
+    }
+    // PEAK_SHARPNESS_ALGORITHM_SOBEL
+    // PEAK_SHARPNESS_ALGORITHM_TENENGRAD
+    // PEAK_SHARPNESS_ALGORITHM_MEAN_SCORE
+    // PEAK_SHARPNESS_ALGORITHM_HISTOGRAM_VARIANCE
+    // required to avoid error with bad ROI size. Why is asking for the ROI we
+    // just queried in error? God only knows
+    roi.size.width = roi.size.width - border;
+    roi.size.height = roi.size.height - border;
+    status = peak_IPL_Sharpness_Measure(hFrame, roi,
+        PEAK_SHARPNESS_ALGORITHM_SOBEL, pSharpness);
+    if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: peak_IPL_Sharpness_Measure failed.\n");
         ret = -1;
     }
 
@@ -2385,8 +2593,161 @@ int imageTransfer(uint16_t* pUnpackedImage)
         fprintf(stderr, "ERROR: Frame_Release failed.\n");
         ret = -1;
     }
+    STOP(tend);
+    DISPLAY_DELTA("sharpness time", DELTA(tend, tstart));
 
     return ret;
+}
+
+
+/**
+ * @brief Measure image sharpness using the our own methods
+ * 
+ * @param pSharpness to double to store sharpness value
+ * @return int status: -1 for failure, 0 otherwise.
+ */
+int measureSharpnessDIY(double* pSharpness)
+{
+    START(tstart);
+    int ret = 0;
+    int binnedImageNumPix = CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR);
+
+    uint16_t kernelSize = 9;
+    // We use the sobel Y kernel because we assume 2 things:
+    // * the sensor x-axis is aligned with the horizon
+    // * we scan primarily in azimuth, so any blurring will primarily be in x,
+    //   making the Y-gradient a more reliable metric than x.
+    // Otherwise, it probably doesn't matter, since stars are round.
+    float sobelKernelY[9] = {-1., -2., -1., 0., 0., 0., 1., 2., 1.};
+
+    static bool firstTime = 1;
+    if (firstTime) {
+        memset(binnedMask, 1, sizeof(binnedMask));
+        firstTime = 0;
+    }
+
+    peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
+    double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
+    getExposureTime(&actualExpTimeMs);
+    uint32_t three_frame_times_timeout_ms = (uint32_t)(3000.0 * actualExpTimeMs + 0.5);
+
+    if (verbose) {
+        printf("measureSharpness: Waiting for frame...\n");
+    }
+
+    // ---------------------------------------------------------------------- //
+    // Actual data transfer
+    // ---------------------------------------------------------------------- //
+    // wait for image transfer
+    peak_status status = peak_Acquisition_WaitForFrame(hCam,
+        three_frame_times_timeout_ms, &hFrame);
+    if(status == PEAK_STATUS_TIMEOUT) {
+        fprintf(stderr, "ERROR: WaitForFrame timed out after 3 frame times.\n");
+        return -1;
+    } else if(status == PEAK_STATUS_ABORTED) {
+        fprintf(stderr, "ERROR: WaitForFrame aborted by camera.\n");
+        return -1;
+    } else if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: WaitForFrame failed.\n");
+        return -1;
+    }
+
+    // At this point we successfully got a frame handle. We need to release it
+    // when done!
+    if(peak_Frame_IsComplete(hFrame) == PEAK_FALSE) {
+        printf("WARNING: Incomplete frame transfer.\n");
+    }
+
+    if (verbose) {
+        printf("imageTransfer: Got frame, unpacking...\n");
+    }
+
+    // get image from frame handle
+    peak_buffer buffer = {NULL, 0, NULL};
+    status = peak_Frame_Buffer_Get(hFrame, &buffer);
+    if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: Failed to get buffer from frame.\n");
+        return -1;
+    }
+    unpack_mono12((uint16_t *)buffer.memoryAddress, unpacked_image,
+        binnedImageNumPix);
+
+    // measure sharpness
+    // convolution needs floats
+    for (unsigned int i = 0; i < binnedImageNumPix; i++) {
+        imageFloatIn[i] = (float)unpacked_image[i];
+    }
+
+    // Used for normalizing the contrast metric
+    float imageAverage = 0.0;
+    float imageMax = 0.0;
+    uint32_t imageMaxIdx = 0U;
+    // TODO(evanmayer): check retval
+
+    imageStats(imageFloatIn, (uint32_t)binnedImageNumPix, &imageAverage, &imageMax,
+        &imageMaxIdx);
+
+    doConvolution3x3(imageFloatIn, binnedMask,
+        CAMERA_WIDTH / CAMERA_FOCUS_BINFACTOR, (uint32_t)binnedImageNumPix,
+        sobelKernelY, sobelResult);
+
+    // Let the sharpness metric be the sum of squared gradients, as
+    // estimated by the Sobel operator
+    double sobelMetric = 0.0;
+    for (uint32_t i = 0; i < binnedImageNumPix; i++) {
+        sobelMetric += sobelResult[i] * sobelResult[i];
+    }
+
+    // We normalize by something proportional to the shot noise in the
+    // image to handle cases where the shot noise, and thus the sum of
+    // squared gradients, is changing rapidly during an AF run
+    if (imageAverage > 1) {
+        sobelMetric /= imageAverage;
+    }
+    // divide by # px because metric is usually quite high - better for display
+    *pSharpness = sobelMetric / binnedImageNumPix;
+
+    status = peak_Frame_Release(hCam, hFrame);
+    if(!checkForSuccess(status)) {
+        fprintf(stderr, "ERROR: Frame_Release failed.\n");
+        ret = -1;
+    }
+    STOP(tend);
+    DISPLAY_DELTA("sharpness time", DELTA(tend, tstart));
+
+    return ret;
+}
+
+
+/**
+ * @brief Ensures peak IPL hot pixel compensation is on, sets it to maximum, and
+ * re-makes the hot pixel list.
+ * 
+ * @return int -1 if failed, 0 otherwise
+ */
+int renewCameraHotPixels(void)
+{
+    if (verbose) {
+        printf("renewCameraHotPixels: making new internal camera hot pixel "
+            "mask.\n");
+    }
+    // Enable hardware hot pixel compensation
+    peak_status status = peak_IPL_HotpixelCorrection_Enable(hCam, PEAK_TRUE);
+    if (!checkForSuccess(status)) {
+        fprintf(stderr, "renewCameraHotPixels: Enabling hot pixel correction"
+            " failed.\n");
+        return -1;
+    }
+    // Set sensitivity level. This also resets the hot pixel list, triggering
+    // the camera to re-find hot pixels.
+    peak_hotpixel_correction_sensitivity sens = PEAK_HOTPIXEL_CORRECTION_SENSITIVITY_LEVEL_5; // max
+    status = peak_IPL_HotpixelCorrection_Sensitivity_Set(hCam, sens);
+    if (!checkForSuccess(status)) {
+        fprintf(stderr, "renewCameraHotPixels: Setting hot pixel correction "
+            "sensitivity failed.\n");
+        return -1;
+    }
+    return 0;
 }
 #endif
 
@@ -2421,7 +2782,7 @@ void makeMask(uint16_t * ib, int i0, int j0, int i1, int j1, int x0, int y0,
     static int num_p = 0, num_alloc = 0;
 
     if (first_time) {
-        mask = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, 1);
+        mask = calloc(CAMERA_NUM_PX, 1);
         x_p = calloc(100, sizeof(int));
         y_p = calloc(100, sizeof(int));
         num_alloc = 100;
@@ -2586,8 +2947,8 @@ void boxcarFilterImage(uint16_t * ib, int i0, int j0, int i1, int j1, int r_f,
     static uint64_t * ibc1 = NULL;
 
     if (first_time) {
-        nc = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, 1);
-        ibc1 = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, sizeof(uint64_t));
+        nc = calloc(CAMERA_NUM_PX, 1);
+        ibc1 = calloc(CAMERA_NUM_PX, sizeof(uint64_t));
         first_time = 0;
     }
 
@@ -2642,33 +3003,6 @@ void boxcarFilterImage(uint16_t * ib, int i0, int j0, int i1, int j1, int r_f,
 }
 
 
-// /**
-//  * @brief Function that will do an approximate 3x3 Gaussian smoothing of an image.
-//  * @details If you want more smoothing, you should iteratively apply this
-//  * filter. sigma^2 = sigma_1^2 + sigma_2^2, sigma_1 = sigma_2
-//  * => sigma = sqrt(2) sigma_1
-//  * 
-//  * @param ib "input buffer" the input image with 12 bit depth, stored in 16bit ints
-//  * @param i0 starting column for filtering
-//  * @param j0 starting row for filtering
-//  * @param i1 ending column for filtering
-//  * @param j1 ending row for filtering
-//  * @param r_f boxcar filter radius
-//  * @param filtered_image output image
-//  */
-// void gaussianFilter3x3(
-//     uint16_t* inputBuffer,
-//     unsigned char* mask,
-//     float* filteredImage)
-// {
-//     // A Gaussian NxN = 3x3 kernel with sigma = (N - 1) / 4 = .5
-//     uint8_t kernelSize = 9;
-//     float kernel[9] = {1./16., 2./16., 1./16., 2./16., 4./16., 2./16., 1./16., 2./16., 1./16.};
-//     doConvolution(inputBuffer, CAMERA_WIDTH, CAMERA_WIDTH * CAMERA_HEIGHT, mask,
-//             kernel, kernelSize, filteredImage);
-// }
-
-
 /* Function to find the blobs in an image.
 ** Inputs: The original image prior to processing (input_biffer), the dimensions
 ** of the image (w & h) pointers to arrays for the x coordinates, y coordinates,
@@ -2688,8 +3022,8 @@ int findBlobs(uint16_t * input_buffer, int w, int h, double ** star_x,
 
     // allocate the proper amount of storage space to start
     if (first_time) {
-        ic = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, sizeof(double));
-        ic2 = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, sizeof(double));
+        ic = calloc(CAMERA_NUM_PX, sizeof(double));
+        ic2 = calloc(CAMERA_NUM_PX, sizeof(double));
         first_time = 0;
     }
   
@@ -3066,302 +3400,239 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 }
 
 
-// int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm* tm_info, uint16_t* output_buffer) {
-//     // Housekeeping
-//     static FILE * af_file = NULL;
-//     static char af_filename[256];
-//     struct timeval tv;
-//     double photo_time;
+int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm* tm_info, uint16_t* output_buffer) {
+    printf("Running contrast detection AF.\n");
 
-//     // AF tracking
-//     uint16_t numFocusPos = 0;
-//     // A upper bound on focus tries guards against focusing forever
-//     // If someone accidentally orders an 8000-range, 5-step AF run or worse, we'll
-//     // cut out early
-//     uint16_t remainingFocusPos = 1600; 
-//     char focusStrCmd[10] = {'\0'};
+    // Housekeeping
+    static FILE * af_file = NULL;
+    static char af_filename[256];
 
-//     // Contrast detect algorithm parameters
-//     float sobelKernelx[9] = {-1., 0., 1., -2., 0., 2., -1., 0., 1.};
-//     uint16_t kernelSize = 9;
+    // AF tracking
+    uint16_t numFocusPos = 0;
+    // A upper bound on focus tries guards against focusing forever
+    // If someone accidentally orders an 8000-range, 5-step AF run or worse, we'll
+    // cut out early
+    uint16_t remainingFocusPos = 1600; 
+    char focusStrCmd[10] = {'\0'};
 
-//     // Initialize focuser and AF logging
-//     int bestFocusPos = all_camera_params->focus_position;
-//     double bestFocusGrad = 0;
+    // Initialize focuser and AF logging
+    int bestFocusPos = all_camera_params->focus_position;
+    double bestFocusSharpness = 0;
 
-//     printf("Running contrast detection AF.\n");
-//     all_camera_params->begin_auto_focus = 0;
+    all_camera_params->begin_auto_focus = 0;
 
-//     // check that end focus position is at least 25 less than max focus
-//     // position
-//     if (all_camera_params->max_focus_pos - all_camera_params->end_focus_pos 
-//         < 25) {
-//         printf("Adjusting end focus position to be 25 less than max focus "
-//                 "position.\n");
-//         all_camera_params->end_focus_pos = all_camera_params->max_focus_pos 
-//                                             - 25;
-//     }
+    if (af_file != NULL) {
+        fclose(af_file);
+        af_file = NULL;
+    }
+    // clear previous contents of auto-focusing file (open in write mode)
+    strftime(
+        af_filename,
+        sizeof(af_filename),
+        "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H-%M-%S.txt",
+        tm_info
+    );
+    if (verbose) {
+        printf("Opening auto-focusing text file: %s\n", af_filename);
+    }
+    if ((af_file = fopen(af_filename, "w")) == NULL) {
+        fprintf(stderr, "Could not open auto-focusing file: %s.\n", 
+                strerror(errno));
+        all_camera_params->focus_mode = 0;
+        return -1;
+    }
 
-//     // check that beginning focus position is at least 25 above min focus
-//     // position
-//     if (all_camera_params->start_focus_pos - all_camera_params->min_focus_pos
-//         < 25) {
-//         printf("Adjusting beginning focus position to be 25 more than min "
-//                 "focus position.\n");
-//         all_camera_params->start_focus_pos = all_camera_params->min_focus_pos
-//                                             + 25;
-//     }
+    // check that end focus position is at least 25 less than max focus
+    // position
+    if (all_camera_params->max_focus_pos - all_camera_params->end_focus_pos 
+        < 25) {
+        printf("Adjusting end focus position to be 25 less than max focus "
+                "position.\n");
+        all_camera_params->end_focus_pos = all_camera_params->max_focus_pos 
+                                            - 25;
+    }
+    // check that beginning focus position is at least 25 above min focus
+    // position
+    if (all_camera_params->start_focus_pos - all_camera_params->min_focus_pos
+        < 25) {
+        printf("Adjusting beginning focus position to be 25 more than min "
+                "focus position.\n");
+        all_camera_params->start_focus_pos = all_camera_params->min_focus_pos
+                                            + 25;
+    }
+    // get to beginning of auto-focusing range
+    if (beginAutoFocus() < 1) {
+        printf("Error beginning auto-focusing process. Skipping to taking "
+                "observing images...\n");
+        // return to default focus position
+        if (defaultFocusPosition() < 1) {
+            printf("Error moving to default focus position.\n");
+            all_camera_params->focus_mode = 0;
+            return -1;
+        }
 
-//     if (af_file != NULL) {
-//         fclose(af_file);
-//         af_file = NULL;
-//     }
+        // abort auto-focusing process
+        all_camera_params->focus_mode = 0;
+    }
 
-    
-//     // clear previous contents of auto-focusing file (open in write mode)
-//     strftime(
-//         af_filename,
-//         sizeof(af_filename),
-//         "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H-%M-%S.txt",
-//         tm_info
-//     );
-//     if (verbose) {
-//         printf("Opening auto-focusing text file: %s\n", af_filename);
-//     }
+    // Loop until all focus positions covered
+    bool hasGoneForward = 0;
+    bool hasGoneBackward = 0;
+    bool atFarEnd = 0;
+    bool atNearEnd = 0;
+    int dir = 1;
 
-//     if ((af_file = fopen(af_filename, "w")) == NULL) {
-//         fprintf(stderr, "Could not open auto-focusing file: %s.\n", 
-//                 strerror(errno));
-//         return -1;
-//     }
+    // Set binning to speed up sharpness measurement
+    // NOTE: any return statements between here and the end of the focusing loop
+    // must be guarded by a call to attempt to return the bin factor to 1.
+    // (restoreBinningFactor())
+    if (setBinningFactor(CAMERA_FOCUS_BINFACTOR) < 0) {
+        // focusing ROI in measureSharpness depends on correct binning factor
+        // set
+        return -1;
+    }
 
-//     // ECM: not sure if this is relevant for my alg - may remove
-//     // turn dynamic hot pixels off to avoid removing blobs during focusing
-//     prev_dynamic_hp = all_blob_params.dynamic_hot_pixels;
-//     if (verbose) {
-//         printf("Turning dynamic hot pixel finder off for auto-focusing.\n");
-//     }
-//     all_blob_params.dynamic_hot_pixels = 0;
-    
-//     // link the auto-focusing txt file to Kst for plotting
-//     unlink("/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
-//     symlink(af_filename, 
-//             "/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
+    while (remainingFocusPos > 0) {
+        remainingFocusPos -= 1;
+        atFarEnd = (all_camera_params->focus_position >= all_camera_params->end_focus_pos);
+        atNearEnd = (all_camera_params->focus_position < all_camera_params->start_focus_pos);
+        if (atFarEnd) {
+            if (hasGoneForward && !hasGoneBackward) {
+                dir = -1;
+                hasGoneBackward = 1;
+            }
+        }
+        if (atNearEnd && hasGoneBackward) {
+            // Break out of AF
+            all_camera_params->focus_mode = 0;
+            printf("Quitting autofocus after fulfilling end conditions...\n");
+            break;
+        }
+        if (0 == all_camera_params->focus_mode) {
+            printf("Quitting autofocus by user cancel...\n");
+            break;
+        }
 
-//     // get to beginning of auto-focusing range
-//     if (beginAutoFocus() < 1) {
-//         printf("Error beginning auto-focusing process. Skipping to taking "
-//                 "observing images...\n");
+        taking_image = 1;
+        if (imageCapture() < 0) {
+            fprintf(stderr, "Could not complete image capture: %s.\n", 
+                strerror(errno));
+            all_camera_params->focus_mode = 0;
+            if (restoreBinningFactor() < 0) {
+                closeCamera();
+                exit(EXIT_FAILURE);
+            }
+            return -1;
+        }
+        taking_image = 0;
 
-//         // return to default focus position
-//         if (defaultFocusPosition() < 1) {
-//             printf("Error moving to default focus position.\n");
-//             return -1;
-//         }
+        double sharpness = 0.0;
+        if (measureSharpnessDIY(&sharpness) < 0) {
+            fprintf(stderr, "Could not complete sharpness measurement: %s.\n", 
+            strerror(errno));
+            all_camera_params->focus_mode = 0;
+            if (restoreBinningFactor() < 0) {
+                closeCamera();
+                exit(EXIT_FAILURE);
+            }
+            return -1;
+        };
 
-//         // abort auto-focusing process
-//         all_camera_params->focus_mode = 0;
-//     }
+        // We don't save individual AF images in order to maximize speed,
+        // thereby minimizing the possible change in image levels and star field
+        // content across a run.
 
-//     // Loop until all focus positions covered
-//     bool hasGoneForward = 0;
-//     bool hasGoneBackward = 0;
-//     bool atFarEnd = 0;
-//     bool atNearEnd = 0;
-//     int dir = 1;
+        // Save off commanded position and max gradient in image
+        if (sharpness >= bestFocusSharpness) {
+            bestFocusSharpness = sharpness;
+            bestFocusPos = (int32_t)all_camera_params->focus_position;
+        }
 
-//     while (remainingFocusPos > 0) {
-//         remainingFocusPos -= 1;
-//         atFarEnd = (all_camera_params->focus_position >= all_camera_params->end_focus_pos);
-//         atNearEnd = (all_camera_params->focus_position < all_camera_params->start_focus_pos);
-//         if (atFarEnd) {
-//             if (hasGoneForward && !hasGoneBackward) {
-//                 dir = -1;
-//                 hasGoneBackward = 1;
-//             }
-//         }
-//         if (atNearEnd && hasGoneBackward) {
-//             // Break out of AF
-//             all_camera_params->focus_mode = 0;
-//             printf("Quitting autofocus after fulfilling end conditions...\n");
-//             break;
-//         }
-//         if (0 == all_camera_params->focus_mode) {
-//             printf("Quitting autofocus by user cancel...\n");
-//             break;
-//         }
+        // Save off data in AF logfile
+        all_camera_params->flux = sharpness;
 
-//         taking_image = 1;
-//         if (imageCapture() < 0) {
-//             fprintf(stderr, "Could not complete image capture: %s.\n", 
-//                 strerror(errno));
-//         }
-//         taking_image = 0;
+        if (verbose) {
+            printf("(*) Sharpness metric in image for focus %d is %lf.\n",
+            all_camera_params->focus_position, sharpness);
+        }
+        fprintf(af_file, "%.6lf\t%5d\n", sharpness,
+                all_camera_params->focus_position);
+        fflush(af_file);
 
-//         gettimeofday(&tv, NULL);
-//         photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
-//         all_astro_params.photo_time = photo_time;
+        // Move to next position
+        // if (all_camera_params->focus_position >= all_camera_params->end_focus_pos) {
+        //     all_camera_params->focus_step *= -1;
+        // } // two-way AF
+        // int focusStep = min(
+        //     all_camera_params->focus_step,
+        //     all_camera_params->end_focus_pos -
+        //     all_camera_params->focus_position);
+        int focusStep = all_camera_params->focus_step * dir;
+        sprintf(focusStrCmd, "mf %i\r", focusStep);
+        if (!cancelling_auto_focus) {
+            shiftFocus(focusStrCmd);
+        }
+        numFocusPos++;
+        hasGoneForward = 1;
 
-//         #ifndef IDS_PEAK
-//         if (imageTransfer(unpacked_image) < 0) {
-//             fprintf(stderr, "Could not complete image transfer: %s.\n", 
-//             strerror(errno));
-//             return -1;
-//         }
-//         #else
-//         if (imageTransfer(unpacked_image) < 0) {
-//             fprintf(stderr, "Could not complete image transfer: %s.\n", 
-//             strerror(errno));
-//             return -1;
-//         }
-//         #endif
+        // for kst display?
+        memcpy(output_buffer, unpacked_image, CAMERA_NUM_PX * sizeof(uint16_t));
+        // pass off the image bytes for sending to clients
+        memcpy(camera_raw, output_buffer, CAMERA_NUM_PX * sizeof(uint16_t));
+    }
 
-//         // make kst display the filtered image
-//         memcpy(output_buffer, unpacked_image, CAMERA_WIDTH*CAMERA_HEIGHT * sizeof(uint16_t));
-//         // pointer for transmitting to user should point to where image is in memory
-//         // camera_raw = output_buffer;
+    if (restoreBinningFactor() < 0) {
+        closeCamera();
+        exit(EXIT_FAILURE);
+    }
 
+    if (verbose) {
+        printf("Autofocus concluded with %d tries remaining.\n", remainingFocusPos);
+    }
 
-//         // ECM N.B.: uEye API has functions to calc sharpness in hardware
-//         // but they are not supported on our camera. I think they're only
-//         // supported on AF-enabled camera models. I implemented it and got
-//         // all 0s back. So we do it in software.
+    // Move to optimal focus pos
+    // Do bounds checking on resultant pos
+    if (bestFocusPos > all_camera_params->max_focus_pos) {
+        printf("Auto focus is greater than max possible focus, "
+                "so just use that.\n");
+        bestFocusPos = all_camera_params->max_focus_pos;
+    // this outcome is highly unlikely but just in case
+    } else if (bestFocusPos < all_camera_params->min_focus_pos) {
+        printf("Auto focus is less than min possible focus, "
+                "so just use that.\n");
+        bestFocusPos = all_camera_params->min_focus_pos;
+    }
+    // Due to backlash, return to the optimal focus position via the direction
+    // we measured it: move to beginning
+    if (beginAutoFocus() < 1) {
+        printf("Error moving back to beginning of auto-focusing range. Skipping to taking "
+                "observing images...\n");
 
-//         // Used for edge cases in convolution and later for normalizing
-//         // the contrast metric
-//         uint32_t imageNumPix = CAMERA_WIDTH * CAMERA_HEIGHT;
-//         uint16_t imageAverage = average(unpacked_image, imageNumPix);
+        // return to default focus position
+        if (defaultFocusPosition() < 1) {
+            printf("Error moving to default focus position.\n");
+            all_camera_params->focus_mode = 0;
+            return -1;
+        }
 
-//         // Sobel filter for contrast detection
-//         // Usually, you want to judge sharpness based on the magnitude of
-//         // the x- and y- gradients (G = (G_x^2 + G_y^2)^.5).
-//         // Because we assume stars are mostly round, we can just take
-//         // either and save a convolution.
-//         doConvolution(unpacked_image, CAMERA_WIDTH, imageNumPix, mask,
-//             sobelKernelx, kernelSize, sobelResult);
-//         // Let the sharpness metric be the sum of squared gradients, as
-//         // estimated by the Sobel operator
-//         double sobelMetric = 0.0;
-//         for (uint32_t i = 0; i < imageNumPix; i++) {
-//             float result = sobelResult[i];
-//             sobelMetric += result * result;
-//         }
+        // abort auto-focusing process
+        all_camera_params->focus_mode = 0;
+        return -1;
+    }
+    // and THEN move to the optimal pos.
+    sprintf(focusStrCmd, "mf %i\r", 
+        bestFocusPos - all_camera_params->focus_position);
+    shiftFocus(focusStrCmd);
 
-//         // We normalize by something proportional to the shot noise in the
-//         // image to handle cases where the shot noise, and thus the sum of
-//         // squared gradients, is changing rapidly during an AF run
-//         if (imageAverage > 1) {
-//             sobelMetric /= imageAverage;
-//         }
+    // Clean up
+    fclose(af_file);
+    af_file = NULL;
 
-//         // Save off commanded position and max gradient in image
-//         if (sobelMetric >= bestFocusGrad) {
-//             bestFocusGrad = sobelMetric;
-//             bestFocusPos = (int32_t)all_camera_params->focus_position;
-//         }
-
-//         // Save off data in AF logfile
-//         // sobelMetric is gradient sharpness metric, not flux,
-//         // but same diff...har har
-//         all_camera_params->flux = sobelMetric;
-
-//         printf("(*) Sobel metric in image for focus %d is %lf.\n",
-//             all_camera_params->focus_position, sobelMetric);
-//         fprintf(af_file, "%.6lf\t%5d\n", sobelMetric,
-//                 all_camera_params->focus_position);
-//         fflush(af_file);
-
-//         send_data = 1;
-//         // if clients are listening and we want to guarantee data is sent to
-//         // them before continuing with auto-focusing, wait until data_sent
-//         // confirmation. If there are no clients, no need to slow down auto-
-//         // focusing
-//         if (num_clients > 0) {
-//             while (!telemetry_sent) {
-//                 if (verbose) {
-//                     printf("> Waiting for data to send to client...\n");
-//                 }
-
-//                 usleep(10000);
-//             }
-//         }
-//         send_data = 0;
-
-//         // Move to next position
-//         // if (all_camera_params->focus_position >= all_camera_params->end_focus_pos) {
-//         //     all_camera_params->focus_step *= -1;
-//         // } // two-way AF
-//         // int focusStep = min(
-//         //     all_camera_params->focus_step,
-//         //     all_camera_params->end_focus_pos -
-//         //     all_camera_params->focus_position);
-//         int focusStep = all_camera_params->focus_step * dir;
-//         sprintf(focusStrCmd, "mf %i\r", focusStep);
-//         if (!cancelling_auto_focus) {
-//             shiftFocus(focusStrCmd);
-//         }
-//         numFocusPos++;
-//         hasGoneForward = 1;
-//     }
-
-//     // Necessary to avoid going into legacy autofocus mode if we drop out
-//     // due to too many AF attempts.
-//     all_camera_params->focus_mode = 0;
-
-//     if (verbose) {
-//         printf("Autofocus concluded with %d tries remaining.\n", remainingFocusPos);
-//     }
-
-//     // Move to optimal focus pos
-//     // Do bounds checking on resultant pos
-//     if (bestFocusPos > all_camera_params->max_focus_pos) {
-//         printf("Auto focus is greater than max possible focus, "
-//                 "so just use that.\n");
-//         bestFocusPos = all_camera_params->max_focus_pos;
-//     // this outcome is highly unlikely but just in case
-//     } else if (bestFocusPos < all_camera_params->min_focus_pos) {
-//         printf("Auto focus is less than min possible focus, "
-//                 "so just use that.\n");
-//         bestFocusPos = all_camera_params->min_focus_pos;
-//     }
-//     // Due to backlash, return to the optimal focus position via the direction
-//     // we measured it: move to beginning
-//     if (beginAutoFocus() < 1) {
-//         printf("Error moving back to beginning of auto-focusing range. Skipping to taking "
-//                 "observing images...\n");
-
-//         // return to default focus position
-//         if (defaultFocusPosition() < 1) {
-//             printf("Error moving to default focus position.\n");
-//             closeCamera();
-//             return -1;
-//         }
-
-//         // abort auto-focusing process
-//         all_camera_params->focus_mode = 0;
-//     }
-//     // and THEN move to the optimal pos.
-//     sprintf(focusStrCmd, "mf %i\r", 
-//         bestFocusPos - all_camera_params->focus_position);
-//     shiftFocus(focusStrCmd);
-
-//     // Clean up
-//     fclose(af_file);
-//     af_file = NULL;
-
-//     // turn dynamic hot pixels back to whatever user had specified
-//     if (verbose) {
-//         printf("> Auto-focusing finished, so restoring dynamic hot "
-//                 "pixels to previous value...\n");
-//     }
-
-//     all_blob_params.dynamic_hot_pixels = prev_dynamic_hp;
-//     if (verbose) {
-//         printf("Now all_blob_params.dynamic_hot_pixels = %d\n", 
-//                 all_blob_params.dynamic_hot_pixels);
-//     }
-//     return 0;
-// }
+    // Necessary to avoid going into legacy autofocus mode if we drop out
+    // due to too many AF attempts.
+    all_camera_params->focus_mode = 0;
+    return 0;
+}
 
 
 /* Function to take observing images and solve for pointing using Astrometry.
@@ -3373,7 +3644,6 @@ int makeTable(char * filename, double * star_mags, double * star_x,
 */
 int doCameraAndAstrometry(void)
 {
-    // START(tstart);
     // these must be static since this function is called perpetually in 
     // updateAstrometry thread
     static double * star_x = NULL, * star_y = NULL, * star_mags = NULL;
@@ -3438,7 +3708,7 @@ int doCameraAndAstrometry(void)
 
     if (first_time) {
         solveState = INIT;
-        output_buffer = calloc(CAMERA_WIDTH*CAMERA_HEIGHT, sizeof(uint16_t));
+        output_buffer = calloc(CAMERA_NUM_PX, sizeof(uint16_t));
         if (output_buffer == NULL) {
             fprintf(stderr, "Error allocating output buffer: %s.\n", 
                     strerror(errno));
@@ -3492,15 +3762,15 @@ int doCameraAndAstrometry(void)
 
     // if we are at the start of auto-focusing (either when camera first runs or 
     // user re-enters auto-focusing mode)
-    // #ifdef AF_ALGORITHM_NEW
-    // // Hijack AF with new alg, which should set
-    // // all_camera_params.focus_mode = 0 when done to bypass old AF
-    // if (all_camera_params.begin_auto_focus && all_camera_params.focus_mode) {
-    //     solveState = AUTOFOCUS;
-    //     doContrastDetectAutoFocus(&all_camera_params, tm_info, output_buffer);
-    //     all_camera_params.focus_mode = 0;
-    // }
-    // #endif
+    #ifdef AF_ALGORITHM_NEW
+    // Hijack AF with new alg, which should set
+    // all_camera_params.focus_mode = 0 when done to bypass old AF
+    if (all_camera_params.begin_auto_focus && all_camera_params.focus_mode) {
+        solveState = AUTOFOCUS;
+        doContrastDetectAutoFocus(&all_camera_params, tm_info, output_buffer);
+        all_camera_params.focus_mode = 0;
+    }
+    #endif
     if (all_camera_params.begin_auto_focus && all_camera_params.focus_mode) {
         num_focus_pos = 0;
         send_data = 0;
@@ -3588,6 +3858,17 @@ int doCameraAndAstrometry(void)
         symlink(af_filename, 
                 "/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
     }
+
+    #ifdef IDS_PEAK
+    // If the user has triggered a new hot pixel mask, or want to be using 
+    // dynamic hot pixel masking, re-make the mask internal hot pixel list
+    // before capture.
+    if (all_blob_params.make_static_hp_mask || all_blob_params.dynamic_hot_pixels) {
+        if (renewCameraHotPixels() < 0) {
+            fprintf(stderr, "Could not re-make internal hot pixel mask.\n");
+        }
+    }
+    #endif
 
     solveState = IMAGE_CAP;
     taking_image = 1;
@@ -3708,10 +3989,10 @@ int doCameraAndAstrometry(void)
     }
 
     // make kst display the filtered image 
-    memcpy(output_buffer, unpacked_image, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
+    memcpy(output_buffer, unpacked_image, CAMERA_NUM_PX * sizeof(uint16_t));
 
     // pass off the image bytes for sending to clients
-    memcpy(camera_raw, output_buffer, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
+    memcpy(camera_raw, output_buffer, CAMERA_NUM_PX * sizeof(uint16_t));
 
     // get current time right after exposure
     if (clock_gettime(CLOCK_REALTIME, &camera_tp_beginning) == -1) {
@@ -3929,15 +4210,7 @@ int doCameraAndAstrometry(void)
     #ifndef IDS_PEAK
     saveImageToDisk(filename);
     #else
-    // temporary: solve cyclic dependency between filename time of validity and
-    // frame capture time.
-    // The frame was saved to disk at transfer time, when the frame handle was
-    // available, with a generic name. Now that we have the final filename,
-    // rename the generic saved file on disk.
-    // if (rename(tmpFileName, filename)) {
-    //     fprintf(stderr, "Unable to rename captured image file to %s: %s.\n",
-    //         filename, strerror(errno));
-    // }
+    saveFITStoDisk(unpacked_image);
     #endif
 
     // printf("Saving captured frame to \"%s\"\n", filename);
@@ -3981,7 +4254,5 @@ int doCameraAndAstrometry(void)
             free(star_mags);
         }
     }
-    // STOP(tend);
-    // DISPLAY_DELTA("|||||| doCameraAndAstrometry", DELTA(tend, tstart));
     return 1;
 }
