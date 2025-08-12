@@ -757,32 +757,14 @@ int main(int argc, char * argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // // initialize the camera with input ID
-    // if (initCamera() < 0) {
-    //     printf("Could not initialize camera due to above error. Could be that "
-    //            "you specified a handle for a camera already in use.\n");
-    //     // if camera was already initialized, close it before exiting
-    //     if (camera_handle > 0) {
-    //         closeCamera();
-    //     }
-    //     close(sockfd);
-    //     exit(EXIT_FAILURE);
-    // }
-
     // initialize the first available camera
     if (initCamera() < 0) {
         printf("Could not initialize camera due to above error. Could be that "
                "you specified a handle for a camera already in use.\n");
         // if camera was already initialized, close it before exiting
-        #ifndef IDS_PEAK
-        if (camera_handle > 0) {
-            closeCamera();
-        }
-        #else
         if (hCam > 0) {
             closeCamera();
         }
-        #endif
         close(sockfd);
         exit(EXIT_FAILURE);
     }

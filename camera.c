@@ -26,7 +26,6 @@
 void merge(double A[], int p, int q, int r, double X[],double Y[]);
 void part(double A[], int p, int r, double X[], double Y[]);
 
-#ifdef IDS_PEAK
 #include <ids_peak_comfort_c/ids_peak_comfort_c.h>
 peak_camera_handle hCam = PEAK_INVALID_HANDLE;
 
@@ -80,16 +79,6 @@ struct fits_metadata_t default_metadata = {
     .autoexp = 0,
     .autoblk = 0
 };
-#else
-#include <ueye.h>
-// 1-254 are possible IDs. Command-line argument from user with ./commands
-HIDS camera_handle;
-// breaking convention of using underscores for struct names because this is how
-// iDS does it in their documentation
-IMAGE_FILE_PARAMS ImageFileParams;
-// same with sensorInfo struct
-SENSORINFO sensorInfo;
-#endif
 
 // global variables
 int image_solved[2] = {0};
@@ -215,22 +204,6 @@ void unpack_mono12(uint16_t* packed, uint16_t* unpacked, int num_pixels)
 }
 
 
-/* Helper function to print camera errors.
-** Input: None.
-** Output: The error from the camera.
-*/
-#ifndef IDS_PEAK
-const char * printCameraError()
-{
-    char * last_error_str;
-    int last_err = 0;
-
-    is_GetError(camera_handle, &last_err, &last_error_str);
-    return last_error_str;
-}
-#endif
-
-#ifdef IDS_PEAK
 /**
  * @brief Helper function to check return values of peak library calls and print
  * errors.
@@ -284,10 +257,8 @@ peak_bool checkForSuccess(peak_status checkStatus)
     }
     return PEAK_TRUE;
 }
-#endif
 
 
-#ifdef IDS_PEAK
 /**
  * @brief Get the current trigger delay in microseconds
  * 
@@ -315,6 +286,7 @@ int getTriggerDelay(double* pCurrentTriggerDelayUs)
     }
     return ret;
 }
+
 
 /**
  * @brief Set the Trigger Delay to the minimum possible value. Side effect:
@@ -360,6 +332,7 @@ int setMinTriggerDelay(void)
     return ret;
 }
 
+
 /**
  * @brief Get the current Trigger Divider value
  * @details A trigger divider value of e.g. 3 will cause every 3rd trigger to be
@@ -392,6 +365,7 @@ int getTriggerDivider(uint32_t* pCurrentTriggerDivider)
     }
     return ret;
 }
+
 
 /**
  * @brief Set the Trigger Divider to 1
@@ -652,17 +626,8 @@ int disableAutoGain(void)
 
     return ret;
 }
-#endif
 
 
-#ifndef IDS_PEAK
-double getFps(void)
-{
-    double actual_fps = 0;
-    is_SetFrameRate(camera_handle, IS_GET_FRAMERATE, (void *) &actual_fps);
-    return actual_fps;
-}
-#else
 /**
  * @brief Get the current framerate in Hz
  * 
@@ -847,36 +812,8 @@ int setMinPixelClock(void)
 
     return ret;
 }
-#endif
 
 
-#ifndef IDS_PEAK
-/**
- * @brief Attempt to set exposure time to the user-commanded time in the
- * all_camera_params.exposure_time struct field.
- * @details Pass in the struct field by value to avoid is_Exposure updating it
- * out from under the user. We do report the actual set value though.
- * 
- * @param exposureTimeMs requested exposure time (ms)
- * @return int -1 for failure, 0 otherwise
- */
-int setExposureTime(double exposureTimeMs)
-{
-    int ret = 0;
-    // run uEye function to update camera exposure
-    // After the call, the actual set exposure time is stored in exposureTimeMs
-    if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_SET_EXPOSURE, 
-                    (void *) &exposureTimeMs, 
-                    sizeof(double)) != IS_SUCCESS) {
-        printf("Adjusting exposure to user command unsuccessful.\n");
-        ret = -1;
-    }
-    if (verbose) {
-        printf("Exposure is now %f msec.\n", exposureTimeMs);
-    }
-    return ret;
-}
-#else
 /**
  * @brief Get the exposure time in milliseconds.
  * 
@@ -1108,127 +1045,12 @@ int setBlackLevelOffset(double blackLevelOffset)
 }
 
 
-#endif
-
-#ifndef IDS_PEAK
-/* Function to initialize the camera and its various parameters.
-** Input: None.
-** Output: A flag indicating successful camera initialization or not.
-*/
-int initCamera(void)
-{
-    double min_exposure, max_exposure;
-    unsigned int enable = 1;
-
-    // load the camera parameters
-    if (loadCamera() < 0) {
-        return -1;
-    }
-
-    // enable long exposure 
-    if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_SET_LONG_EXPOSURE_ENABLE, 
-                   (void *) &enable, sizeof(unsigned int)) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Unable to enable long exposure: %s.\n", cam_error);
-        return -1; 
-    }
-
-    // set exposure time based on struct field
-    if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_SET_EXPOSURE, 
-                   (void *) &all_camera_params.exposure_time, sizeof(double)) 
-                   != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Unable to set default exposure: %s.\n", cam_error);
-        return -1;
-    }
-
-    // get current exposure, max possible exposure, and min exposure
-    if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_GET_EXPOSURE_RANGE_MIN, 
-                    &min_exposure, sizeof(double)) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Unable to get minimum possible exposure: %s.\n", cam_error);
-        return -1;
-    }
-
-    if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_GET_EXPOSURE, &curr_exposure,
-                    sizeof(double)) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Unable to get current exposure value: %s.\n", cam_error);
-        return -1;
-    }
-
-    if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_GET_EXPOSURE_RANGE_MAX, 
-                    &max_exposure, sizeof(double)) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Unable to get maximum exposure value: %s.\n", cam_error);
-        return -1;
-    } else if (verbose) {
-        printf("|\tCurrent exposure time: %f msec\t\t  |\n|\tMin possible "
-               "exposure: %f msec\t\t  |\n|\tMax possible exposure: %f "
-               "msec\t  |\n", curr_exposure, min_exposure, max_exposure);
-        printf("+---------------------------------------------------------+\n");
-    }
-
-    // initialize astrometry
-    if (initAstrometry() < 0) {
-        return -1;
-    }
-
-    // set how images are saved
-    setSaveImage();
-
-    return 1;
-}
-#else
 int initCamera(void)
 {
     // load the camera parameters
     if (loadCamera() < 0) {
         return -1;
     }
-
-    // // enable long exposure 
-    // if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_SET_LONG_EXPOSURE_ENABLE, 
-    //                (void *) &enable, sizeof(unsigned int)) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Unable to enable long exposure: %s.\n", cam_error);
-    //     return -1; 
-    // }
-
-    // Long exposure mode does not exist in iDS peak
-
-    // // set exposure time based on struct field
-    // if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_SET_EXPOSURE, 
-    //                (void *) &all_camera_params.exposure_time, sizeof(double)) 
-    //                != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Unable to set default exposure: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // get current exposure, max possible exposure, and min exposure
-    // if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_GET_EXPOSURE_RANGE_MIN, 
-    //                 &min_exposure, sizeof(double)) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Unable to get minimum possible exposure: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_GET_EXPOSURE, &curr_exposure,
-    //                 sizeof(double)) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Unable to get current exposure value: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // if (is_Exposure(camera_handle, IS_EXPOSURE_CMD_GET_EXPOSURE_RANGE_MAX, 
-    //                 &max_exposure, sizeof(double)) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Unable to get maximum exposure value: %s.\n", cam_error);
-    //     return -1;
-    // } else if (verbose) {
-    //     printf("|\tCurrent exposure time: %f msec\t\t  |\n|\tMin possible "
-    //            "exposure: %f msec\t\t  |\n|\tMax possible exposure: %f "
-    //            "msec\t  |\n", curr_exposure, min_exposure, max_exposure);
-    //     printf("+---------------------------------------------------------+\n");
-    // }
 
     // Set exposure mode based on user input
     // User requests milliseconds
@@ -1240,9 +1062,6 @@ int initCamera(void)
     if (initAstrometry() < 0) {
         return -1;
     }
-
-    // // set how images are saved
-    // setSaveImage();
 
     // In place of logging all sensor parameters to a text file, save off the
     // camera parameter file.
@@ -1273,7 +1092,6 @@ int initCamera(void)
 
     return 1;
 }
-#endif
 
 
 /* Cleaning up function for ctrl+c exception.
@@ -1290,36 +1108,8 @@ void clean(void)
 }
 
 
-#ifndef IDS_PEAK
-/* Function to close the camera when shutting down.
-** Input: None.
-** Output: None (void).
-*/
 void closeCamera(void)
 {
-    if (verbose) {
-        printf("> Closing camera with handle %d...\n", camera_handle);
-    }
-
-    // don't close a camera that doesn't exist yet!
-    if ((mem_starting_ptr != NULL) && (camera_handle <= 254)) { 
-        is_FreeImageMem(camera_handle, (char *)mem_starting_ptr, mem_id);
-        is_ExitCamera(camera_handle);
-    }
-}
-#else
-void closeCamera(void)
-{
-    // if (verbose) {
-    //     printf("> Closing camera with handle %d...\n", camera_handle);
-    // }
-    
-    // // don't close a camera that doesn't exist yet!
-    // if ((mem_starting_ptr != NULL) && (camera_handle <= 254)) { 
-    //     is_FreeImageMem(camera_handle, (char *)mem_starting_ptr, mem_id);
-    //     is_ExitCamera(camera_handle);
-    // }
-
     // Stop acquisition if ongoing
     if (PEAK_TRUE == peak_Acquisition_IsStarted(hCam)) {
         peak_status status = peak_Acquisition_Stop(hCam);
@@ -1341,7 +1131,6 @@ void closeCamera(void)
             "shutdown.\n", finalParameterFile);
     }
 
-
     if (verbose) {
         printf("Closing camera...\n");
     }
@@ -1349,257 +1138,20 @@ void closeCamera(void)
     hCam = NULL;
     (void)peak_Library_Exit();
 }
-#endif
 
 
-#ifndef IDS_PEAK
-/* Function to set starting values for certain camera atributes.
-** Input: None.
-** Output: A flag indicating successful setting of the camera parameters.
-*/
 int setCameraParams(void)
 {
-    double ag = 0.0, auto_shutter = 0.0, afr = 0.0;
-    int blo, blm;
-
-    // set the trigger delay to 0 (microseconds) = deactivates trigger delay
-    if (is_SetTriggerDelay(camera_handle, 0) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting the trigger to 0 microseconds: %s.\n", cam_error);
-        return -1;
-    }
-    // check the trigger delay is 0
-    curr_trig_delay = is_SetTriggerDelay(camera_handle, IS_GET_TRIGGER_DELAY); 
-    if (verbose) {
-        printf("\n+---------------------------------------------------------+\n");
-        printf("|\t\tCamera Specifications\t\t\t  |\n");
-        printf("|---------------------------------------------------------|\n");
-        printf("|\tTrigger delay (should be 0): %i\t\t\t  |\n", curr_trig_delay);
-    }
-
-    // set camera integrated amplifier 
-    if (is_SetHardwareGain(camera_handle, 0, IS_IGNORE_PARAMETER, 
-                           IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER) 
-                           != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting gain: %s.\n", cam_error);
-        return -1;
-    }
-    // check color gains
-    curr_master_gain = is_SetHardwareGain(camera_handle, IS_GET_MASTER_GAIN, 
-                                          IS_IGNORE_PARAMETER, 
-                                          IS_IGNORE_PARAMETER, 
-                                          IS_IGNORE_PARAMETER);
-    curr_red_gain = is_SetHardwareGain(camera_handle, IS_IGNORE_PARAMETER, 
-                                       IS_GET_RED_GAIN, IS_IGNORE_PARAMETER, 
-                                       IS_IGNORE_PARAMETER);
-    curr_green_gain = is_SetHardwareGain(camera_handle, IS_IGNORE_PARAMETER, 
-                                         IS_IGNORE_PARAMETER, IS_GET_GREEN_GAIN,
-                                         IS_IGNORE_PARAMETER);
-    curr_blue_gain = is_SetHardwareGain(camera_handle, IS_IGNORE_PARAMETER, 
-                                        IS_IGNORE_PARAMETER, 
-                                        IS_IGNORE_PARAMETER, IS_GET_BLUE_GAIN);
-    if (verbose) {
-        printf("|\tGain: master, red, green, blue = %i, %i, %i, %i |\n", 
-               curr_master_gain, curr_red_gain, curr_green_gain, curr_blue_gain);
-    }
-
-    // disable camera's auto gain (0 = disabled)
-    if (is_SetAutoParameter(camera_handle, IS_SET_ENABLE_AUTO_GAIN, &ag, NULL) 
-        != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error disabling auto gain: %s.\n", cam_error);
-        return -1;
-    }
-    // check auto gain is off
-    is_SetAutoParameter(camera_handle, IS_GET_ENABLE_AUTO_GAIN, &curr_ag, NULL);
-    if (verbose) {
-        printf("|\tAuto gain (should be disabled): %.1f\t\t  |\n", curr_ag);
-    }
-
-    // set camera's gamma value to off 
-    if (is_SetHardwareGamma(camera_handle, IS_SET_HW_GAMMA_OFF) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error disabling hardware gamma correction: %s.\n", cam_error);
-        return -1;
-    }
-    // check hardware gamma is off
-    curr_gamma = is_SetHardwareGamma(camera_handle, IS_GET_HW_GAMMA);
-    if (verbose) {
-        printf("|\tHardware gamma (should be off): %i\t\t  |\n", curr_gamma);
-    }
-
-    // disable auto shutter
-    if (is_SetAutoParameter(camera_handle, IS_SET_ENABLE_AUTO_SHUTTER, 
-                            &auto_shutter, NULL) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error disabling auto shutter: %s.\n", cam_error);
-        return -1;
-    }
-    // check auto shutter is off
-    is_SetAutoParameter(camera_handle, IS_GET_ENABLE_AUTO_SHUTTER, 
-                        &curr_shutter, NULL);
-    if (verbose) {
-        printf("|\tAuto shutter (should be off): %.1f\t\t  |\n", curr_shutter);
-    }
-
-    // disable auto frame rate
-    if (is_SetAutoParameter(camera_handle, IS_SET_ENABLE_AUTO_FRAMERATE, &afr, 
-                            NULL) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error disabling auto frame rate: %s.\n", cam_error);
-        return -1;
-    }
-    // check auto frame rate is off
-    is_SetAutoParameter(camera_handle, IS_GET_ENABLE_AUTO_FRAMERATE, &auto_fr, 
-                        NULL);
-    if (verbose) {
-        printf("|\tAuto frame rate (should be off): %.1f\t\t  |\n", auto_fr);
-    }
-
-    // disable gain boost to reduce noise
-    if (is_SetGainBoost(camera_handle, IS_SET_GAINBOOST_OFF) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error disabling gain boost: %s.\n", cam_error);
-        return -1;
-    }
-    // check gain boost is off
-    curr_gain_boost = is_SetGainBoost(camera_handle, IS_GET_GAINBOOST);
-    if (verbose) {
-        printf("|\tGain boost (should be disabled): %i\t\t  |\n", 
-               curr_gain_boost);	
-    }
-
-    // turn off auto black level
-    blm = IS_AUTO_BLACKLEVEL_OFF;
-    if (is_Blacklevel(camera_handle, IS_BLACKLEVEL_CMD_SET_MODE, (void *) &blm, 
-                      sizeof(blm)) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error turning off auto black level mode: %s.\n", cam_error);
-        return -1;
-    }
-    // check auto black level is off
-    bl_mode = is_Blacklevel(camera_handle, IS_BLACKLEVEL_CMD_GET_MODE, 
-                            (void *) &bl_mode, sizeof(bl_mode));
-    if (verbose) {
-        printf("|\tAuto black level (should be off): %i\t\t  |\n", bl_mode);
-    }
-
-    // set black level offset to 50
-    blo = 50;
-    if (is_Blacklevel(camera_handle, IS_BLACKLEVEL_CMD_SET_OFFSET, 
-                      (void *) &blo, sizeof(blo)) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting black level offset to 50: %s.\n", cam_error);
-        return -1;
-    }
-    // check black level offset
-    is_Blacklevel(camera_handle, IS_BLACKLEVEL_CMD_GET_OFFSET, 
-                  (void *) &bl_offset, sizeof(bl_offset));
-    if (verbose) {
-        printf("|\tBlack level offset (desired is 50): %i\t\t  |\n", bl_offset);
-    }
-
-    // This for some reason actually affects the time it takes to set aois only 
-    // on the focal plane camera. Don't use if for the trigger timeout. 
-    if (is_SetTimeout(camera_handle, IS_TRIGGER_TIMEOUT, 500) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting trigger timeout: %s.\n", cam_error);
-        return -1;
-    }
-    // check time out
-    is_GetTimeout(camera_handle, IS_TRIGGER_TIMEOUT, &curr_timeout);
-    if (verbose) {
-        printf("|\tCurrent trigger timeout: %i\t\t\t  |\n", curr_timeout);
-    }
-
-    return 1;
-}
-#else
-int setCameraParams(void)
-{
-    // // set the trigger delay to 0 (microseconds) = deactivates trigger delay
-    // if (is_SetTriggerDelay(camera_handle, 0) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error setting the trigger to 0 microseconds: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // check the trigger delay is 0
-    // curr_trig_delay = is_SetTriggerDelay(camera_handle, IS_GET_TRIGGER_DELAY); 
-    // if (verbose) {
-    //     printf("\n+---------------------------------------------------------+\n");
-    //     printf("|\t\tCamera Specifications\t\t\t  |\n");
-    //     printf("|---------------------------------------------------------|\n");
-    //     printf("|\tTrigger delay (should be 0): %i\t\t\t  |\n", curr_trig_delay);
-    // }
-
     if (setMinTriggerDelay() < 0) {
         return -1;
     }
-
     if (setMinTriggerDivider() < 0) {
         return -1;
     }
-
-    // // set camera integrated amplifier 
-    // if (is_SetHardwareGain(camera_handle, 0, IS_IGNORE_PARAMETER, 
-    //                        IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER) 
-    //                        != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error setting gain: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // check color gains
-    // curr_master_gain = is_SetHardwareGain(camera_handle, IS_GET_MASTER_GAIN, 
-    //                                       IS_IGNORE_PARAMETER, 
-    //                                       IS_IGNORE_PARAMETER, 
-    //                                       IS_IGNORE_PARAMETER);
-    // curr_red_gain = is_SetHardwareGain(camera_handle, IS_IGNORE_PARAMETER, 
-    //                                    IS_GET_RED_GAIN, IS_IGNORE_PARAMETER, 
-    //                                    IS_IGNORE_PARAMETER);
-    // curr_green_gain = is_SetHardwareGain(camera_handle, IS_IGNORE_PARAMETER, 
-    //                                      IS_IGNORE_PARAMETER, IS_GET_GREEN_GAIN,
-    //                                      IS_IGNORE_PARAMETER);
-    // curr_blue_gain = is_SetHardwareGain(camera_handle, IS_IGNORE_PARAMETER, 
-    //                                     IS_IGNORE_PARAMETER, 
-    //                                     IS_IGNORE_PARAMETER, IS_GET_BLUE_GAIN);
-    // if (verbose) {
-    //     printf("|\tGain: master, red, green, blue = %i, %i, %i, %i |\n", 
-    //            curr_master_gain, curr_red_gain, curr_green_gain, curr_blue_gain);
-    // }
-
     // Set initial gain to default struct value
     if (setMonoAnalogGain(all_camera_params.gainfact) < 0) {
         return -1;
     }
- 
-    // // disable camera's auto gain (0 = disabled)
-    // if (is_SetAutoParameter(camera_handle, IS_SET_ENABLE_AUTO_GAIN, &ag, NULL) 
-    //     != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error disabling auto gain: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // check auto gain is off
-    // is_SetAutoParameter(camera_handle, IS_GET_ENABLE_AUTO_GAIN, &curr_ag, NULL);
-    // if (verbose) {
-    //     printf("|\tAuto gain (should be disabled): %.1f\t\t  |\n", curr_ag);
-    // }
-
-    // All auto functions are off by default, controlled by autoexposure mode
-
-    // // set camera's gamma value to off 
-    // if (is_SetHardwareGamma(camera_handle, IS_SET_HW_GAMMA_OFF) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error disabling hardware gamma correction: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // check hardware gamma is off
-    // curr_gamma = is_SetHardwareGamma(camera_handle, IS_GET_HW_GAMMA);
-    // if (verbose) {
-    //     printf("|\tHardware gamma (should be off): %i\t\t  |\n", curr_gamma);
-    // }
-
     // Set gamma to neutral. This is a formality, should already be 1.0
     double defaultGamma = 1.0;
     peak_status status = PEAK_STATUS_SUCCESS;
@@ -1610,100 +1162,18 @@ int setCameraParams(void)
             fprintf(stderr, "Setting gamma failed. Continuing.\n");
         }
     }
-
-    // // disable auto shutter
-    // if (is_SetAutoParameter(camera_handle, IS_SET_ENABLE_AUTO_SHUTTER, 
-    //                         &auto_shutter, NULL) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error disabling auto shutter: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // check auto shutter is off
-    // is_SetAutoParameter(camera_handle, IS_GET_ENABLE_AUTO_SHUTTER, 
-    //                     &curr_shutter, NULL);
-    // if (verbose) {
-    //     printf("|\tAuto shutter (should be off): %.1f\t\t  |\n", curr_shutter);
-    // }
-
-    // All auto functions are off by default, controlled by autoexposure mode
-
-    // // disable auto frame rate
-    // if (is_SetAutoParameter(camera_handle, IS_SET_ENABLE_AUTO_FRAMERATE, &afr, 
-    //                         NULL) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error disabling auto frame rate: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // check auto frame rate is off
-    // is_SetAutoParameter(camera_handle, IS_GET_ENABLE_AUTO_FRAMERATE, &auto_fr, 
-    //                     NULL);
-    // if (verbose) {
-    //     printf("|\tAuto frame rate (should be off): %.1f\t\t  |\n", auto_fr);
-    // }
-
-    // All auto functions are off by default, controlled by autoexposure mode
-
-    // // disable gain boost to reduce noise
-    // if (is_SetGainBoost(camera_handle, IS_SET_GAINBOOST_OFF) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error disabling gain boost: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // check gain boost is off
-    // curr_gain_boost = is_SetGainBoost(camera_handle, IS_GET_GAINBOOST);
-    // if (verbose) {
-    //     printf("|\tGain boost (should be disabled): %i\t\t  |\n", 
-    //            curr_gain_boost);	
-    // }
-
     // Ensure we are not in autoexposure mode
     if (disableAutoExposure() < 0) {
         return -1;
     }
-
     // Ensure we are not in autogain mode
     if (disableAutoGain() < 0) {
         return -1;
     }
-
-    // Newer sensors adhere to the analog/digital gain separation paradigm, not
-    // "gain boost"
-
-    // // turn off auto black level
-    // blm = IS_AUTO_BLACKLEVEL_OFF;
-    // if (is_Blacklevel(camera_handle, IS_BLACKLEVEL_CMD_SET_MODE, (void *) &blm, 
-    //                   sizeof(blm)) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error turning off auto black level mode: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // check auto black level is off
-    // bl_mode = is_Blacklevel(camera_handle, IS_BLACKLEVEL_CMD_GET_MODE, 
-    //                         (void *) &bl_mode, sizeof(bl_mode));
-    // if (verbose) {
-    //     printf("|\tAuto black level (should be off): %i\t\t  |\n", bl_mode);
-    // }
-
     // Ensure black level will stay where we set it
     if (disableAutoBlackLevel() < 0) {
         return -1;
     }
-
-    // // set black level offset to 50
-    // blo = 50;
-    // if (is_Blacklevel(camera_handle, IS_BLACKLEVEL_CMD_SET_OFFSET, 
-    //                   (void *) &blo, sizeof(blo)) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error setting black level offset to 50: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // check black level offset
-    // is_Blacklevel(camera_handle, IS_BLACKLEVEL_CMD_GET_OFFSET, 
-    //               (void *) &bl_offset, sizeof(bl_offset));
-    // if (verbose) {
-    //     printf("|\tBlack level offset (desired is 50): %i\t\t  |\n", bl_offset);
-    // }
-
     // Black level should be set after the bit depth in manual black level mode
     // Set black level to 0. Ideally this is chosen based on exposure conditions
     // to ensure the histogram is not clipped at 0.
@@ -1711,164 +1181,12 @@ int setCameraParams(void)
     if (setBlackLevelOffset(defaultBlackLevelOffset) < 0) {
         return -1;
     }
-
-    // // This for some reason actually affects the time it takes to set aois only 
-    // // on the focal plane camera. Don't use if for the trigger timeout. 
-    // if (is_SetTimeout(camera_handle, IS_TRIGGER_TIMEOUT, 500) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error setting trigger timeout: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // check time out
-    // is_GetTimeout(camera_handle, IS_TRIGGER_TIMEOUT, &curr_timeout);
-    // if (verbose) {
-    //     printf("|\tCurrent trigger timeout: %i\t\t\t  |\n", curr_timeout);
-    // }
-
-    // Does not exist in iDS peak, also unclear from comments why this was a
-    // problem
-
     return 1;
 }
-#endif
 
 
-#ifndef IDS_PEAK
-/* Function to load the camera at the beginning of the Star Camera session.
-** Input: None.
-** Output: A flag indicating successful loading of the camera or not.
-*/
 int loadCamera(void)
 {
-    int color_depth, pixelclock;
-    void * active_mem_loc;
-    double fps;
-
-    // initialize camera
-    if (is_InitCamera(&camera_handle, NULL) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error initializing camera in loadCamera(): %s.\n", cam_error);
-        return -1;
-    }
-  
-    // get sensor info
-    if (is_GetSensorInfo(camera_handle, &sensorInfo) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error getting camera sensor information: %s.\n", cam_error);
-        return -1;
-    } 
-
-    // set various other camera parameters
-    if (setCameraParams() < 0) {
-        return -1;
-    }
-
-    // set display mode and then get it to verify
-    if (is_SetColorMode(camera_handle, IS_CM_MONO12) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting color mode: %s.\n", cam_error);
-        return -1;
-    }
-    curr_color_mode = is_SetColorMode(camera_handle, IS_GET_COLOR_MODE);
-    if (verbose) {
-        printf("|\tCamera model: %s\t\t\t  |\n", sensorInfo.strSensorName);
-        printf("|\tSensor ID/type: %i\t\t\t\t  |\n", sensorInfo.SensorID);
-        printf("|\tSensor color mode: %i / %i\t\t\t  |\n", 
-               sensorInfo.nColorMode, curr_color_mode);
-        printf("|\tMaximum image width & height: %i, %i\t  |\n", 
-               sensorInfo.nMaxWidth, sensorInfo.nMaxHeight);
-        printf("|\tPixel size (micrometers): %.2f\t\t\t  |\n", 
-              ((double) sensorInfo.wPixelSize)/100.0);
-    }
-     
-    // allocate camera memory
-    color_depth = 16; 
-    if (is_AllocImageMem(camera_handle, sensorInfo.nMaxWidth, 
-                         sensorInfo.nMaxHeight, color_depth, (char **) &mem_starting_ptr, 
-                         &mem_id) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error allocating image memory: %s.\n", cam_error);
-        return -1;
-    }
-
-    // set memory for image (make memory pointer active)
-    if (is_SetImageMem(camera_handle, (char *)mem_starting_ptr, mem_id) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting image memory: %s.\n", cam_error);
-        return -1;
-    }
-
-    // get image memory
-    if (is_GetImageMem(camera_handle, &active_mem_loc) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error getting image memory: %s.\n", cam_error);
-        return -1;
-    }
-
-    // set frame rate
-    fps = 10;
-    if (is_SetFrameRate(camera_handle, IS_GET_FRAMERATE, (void *) &fps) 
-        != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting frame rate: %s.\n", cam_error);
-        return -1;
-    }
-
-    pixelclock = 25;
-    // Check pixelclock allowed values, in case settings changes have caused it
-    // to differ
-    unsigned int nRange[3] = {0};
-    int nRet = is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_GET_RANGE, (void*)nRange, sizeof(nRange));
-    if (nRet == IS_SUCCESS)
-    {
-        unsigned int nMin = nRange[0];
-        unsigned int nMax = nRange[1];
-        unsigned int nInc = nRange[2];
-        printf("|\tPixelclock min, max, inc: %d, %d, %d  \t\t |\n", nMin, nMax, nInc);
-        
-        pixelclock = nMin;
-    }
-
-    // how clear images can be is affected by pixelclock and fps 
-    if (is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_SET, 
-                      (void *) &pixelclock, sizeof(pixelclock)) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting pixel clock: %s.\n", cam_error);
-        return -1;
-    }
-    // get current pixel clock to check
-    is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_GET, (void *) &curr_pc, 
-                  sizeof(curr_pc));
-    if (verbose) {
-        printf("|\tPixel clock: %i\t\t\t\t\t  |\n", curr_pc);
-    }
-
-    // set trigger to software mode (call is_FreezeVideo to take single picture 
-    // in single frame mode)
-    if (is_SetExternalTrigger(camera_handle, IS_SET_TRIGGER_SOFTWARE) 
-        != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error setting external trigger mode: %s.\n", cam_error);
-        return -1;
-    }
-    // get the current trigger setting
-    curr_ext_trig = is_SetExternalTrigger(camera_handle, IS_GET_EXTERNALTRIGGER);
-    if (verbose) {
-        printf("|\tCurrent external trigger mode: %i\t\t  |\n", curr_ext_trig);
-    }
-
-    return 1;
-}
-#else
-int loadCamera(void)
-{
-    // // initialize camera
-    // if (is_InitCamera(&camera_handle, NULL) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error initializing camera in loadCamera(): %s.\n", cam_error);
-    //     return -1;
-    // }
-
     // Init Library
     peak_status status = PEAK_STATUS_SUCCESS;
     peak_access_status accessStatus = PEAK_ACCESS_INVALID;
@@ -1917,32 +1235,6 @@ int loadCamera(void)
     }
     default_metadata.sensorid = (uint64_t)cameraId;
 
-    // NOTE(evanmayer): This logging is handled in FITS metadata now
-    // // get sensor info
-    // if (is_GetSensorInfo(camera_handle, &sensorInfo) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error getting camera sensor information: %s.\n", cam_error);
-    //     return -1;
-    // }
-
-    // // set display mode and then get it to verify
-    // if (is_SetColorMode(camera_handle, IS_CM_MONO12) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error setting color mode: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // curr_color_mode = is_SetColorMode(camera_handle, IS_GET_COLOR_MODE);
-    // if (verbose) {
-    //     printf("|\tCamera model: %s\t\t\t  |\n", sensorInfo.strSensorName);
-    //     printf("|\tSensor ID/type: %i\t\t\t\t  |\n", sensorInfo.SensorID);
-    //     printf("|\tSensor color mode: %i / %i\t\t\t  |\n", 
-    //            sensorInfo.nColorMode, curr_color_mode);
-    //     printf("|\tMaximum image width & height: %i, %i\t  |\n", 
-    //            sensorInfo.nMaxWidth, sensorInfo.nMaxHeight);
-    //     printf("|\tPixel size (micrometers): %.2f\t\t\t  |\n", 
-    //           ((double) sensorInfo.wPixelSize)/100.0);
-    // }
-
     // Set pixel format to unpacked Mono12
     accessStatus = peak_PixelFormat_GetAccessStatus(hCam);
     if (PEAK_IS_WRITEABLE(accessStatus)) {
@@ -1960,94 +1252,15 @@ int loadCamera(void)
     if (setCameraParams() < 0) {
         return -1;
     }
-    
-    // // allocate camera memory
-    // color_depth = 16; 
-    // if (is_AllocImageMem(camera_handle, sensorInfo.nMaxWidth, 
-    //                      sensorInfo.nMaxHeight, color_depth, (char **) &mem_starting_ptr, 
-    //                      &mem_id) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error allocating image memory: %s.\n", cam_error);
-    //     return -1;
-    // }
-
-    // // set memory for image (make memory pointer active)
-    // if (is_SetImageMem(camera_handle, (char *)mem_starting_ptr, mem_id) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error setting image memory: %s.\n", cam_error);
-    //     return -1;
-    // }
-
-    // // get image memory
-    // if (is_GetImageMem(camera_handle, &active_mem_loc) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error getting image memory: %s.\n", cam_error);
-    //     return -1;
-    // }
-
-    // Image memory handling is done automatically in iDS peak. We get frame
-    // handles instead.
-
-    // // set frame rate
-    // fps = 10;
-    // if (is_SetFrameRate(camera_handle, IS_GET_FRAMERATE, (void *) &fps) 
-    //     != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error setting frame rate: %s.\n", cam_error);
-    //     return -1;
-    // }
 
     // It's not strictly necessary to set the acquisition framerate, as it only
     // applies in FreeRun mode. Also, the range of allowed values depend on and
     // will be overridden by the exposure time setting.
     setFps(10.0);
 
-    // pixelclock = 25;
-    // // Check pixelclock allowed values, in case settings changes have caused it
-    // // to differ
-    // unsigned int nRange[3] = {0};
-    // int nRet = is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_GET_RANGE, (void*)nRange, sizeof(nRange));
-    // if (nRet == IS_SUCCESS)
-    // {
-    //     unsigned int nMin = nRange[0];
-    //     unsigned int nMax = nRange[1];
-    //     unsigned int nInc = nRange[2];
-    //     printf("|\tPixelclock min, max, inc: %d, %d, %d  \t\t |\n", nMin, nMax, nInc);
-        
-    //     pixelclock = nMin;
-    // }
-
-    // // how clear images can be is affected by pixelclock and fps 
-    // if (is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_SET, 
-    //                   (void *) &pixelclock, sizeof(pixelclock)) != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error setting pixel clock: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // get current pixel clock to check
-    // is_PixelClock(camera_handle, IS_PIXELCLOCK_CMD_GET, (void *) &curr_pc, 
-    //               sizeof(curr_pc));
-    // if (verbose) {
-    //     printf("|\tPixel clock: %i\t\t\t\t\t  |\n", curr_pc);
-    // }
-
     if (setMinPixelClock() < 0) {
         return -1;
     }
-
-    // // set trigger to software mode (call is_FreezeVideo to take single picture 
-    // // in single frame mode)
-    // if (is_SetExternalTrigger(camera_handle, IS_SET_TRIGGER_SOFTWARE) 
-    //     != IS_SUCCESS) {
-    //     cam_error = printCameraError();
-    //     printf("Error setting external trigger mode: %s.\n", cam_error);
-    //     return -1;
-    // }
-    // // get the current trigger setting
-    // curr_ext_trig = is_SetExternalTrigger(camera_handle, IS_GET_EXTERNALTRIGGER);
-    // if (verbose) {
-    //     printf("|\tCurrent external trigger mode: %i\t\t  |\n", curr_ext_trig);
-    // }
 
     // Set trigger to software mode and enable
     const peak_trigger_mode triggerMode = PEAK_TRIGGER_MODE_SOFTWARE_TRIGGER;
@@ -2071,20 +1284,8 @@ int loadCamera(void)
 
     return 1;
 }
-#endif
 
 
-#ifndef IDS_PEAK
-int getNumberOfCameras(int* pNumCams)
-{
-    if (is_GetNumberOfCameras(pNumCams) != IS_SUCCESS) {
-        printf("Cannot get # of cameras connected to computer.\n");
-        *pNumCams = 0;
-        return -1;
-    }
-    return 0;
-}
-#else
 int getNumberOfCameras(int* pNumCams) {
     printf("Getting length of camera list...\n");
     size_t cameraListLength = 0;
@@ -2101,39 +1302,10 @@ int getNumberOfCameras(int* pNumCams) {
     }
     return 0;
 }
-#endif
 
 
-#ifndef IDS_PEAK
-// save image for future reference
-int saveImageToDisk(char* filename)
-{
-    int ret = 0;
-    wchar_t wFilename[200];
-    swprintf(wFilename, 200, L"%s", filename);
-    ImageFileParams.pwchFileName = wFilename;
-    if (is_ImageFile(camera_handle, IS_IMAGE_FILE_CMD_SAVE, 
-                    (void *) &ImageFileParams,
-                    sizeof(ImageFileParams)) != IS_SUCCESS) {
-        const char * last_error_str = printCameraError();
-        printf("Failed to save image to file %ls: %s\n", wFilename, last_error_str);
-        ret = -1;
-    }
-    return ret;
-}
-#else
 int saveImageToDisk(char* filename, peak_frame_handle hFrame)
 {
-    // int ret = 0;
-    // ImageFileParams.pwchFileName = filename;
-    // if (is_ImageFile(camera_handle, IS_IMAGE_FILE_CMD_SAVE, 
-    //                 (void *) &ImageFileParams,
-    //                 sizeof(ImageFileParams)) != IS_SUCCESS) {
-    //     const char * last_error_str = printCameraError();
-    //     printf("Failed to save image: %s\n", last_error_str);
-    //     ret = -1;
-    // }
-    // return ret;
     if (verbose) {
         printf("saveImageToDisk: saving %s\n", filename);
     }
@@ -2221,29 +1393,8 @@ int saveFITStoDisk(uint16_t* pUnpackedImage)
     }
     return ret;
 }
-#endif
 
 
-#ifndef IDS_PEAK
-/**
- * @brief Encapsulates the call to trigger an image capture.
- * 
- * @return int status: -1 if failed, 0 otherwise
- */
-int imageCapture(void)
-{
-    int ret = 0;
-    if (verbose) {
-        printf("\n> Taking a new image...\n\n");
-    }
-    if (is_FreezeVideo(camera_handle, IS_WAIT) != IS_SUCCESS) {
-        const char * last_error_str = printCameraError();
-        printf("Failed to capture new image: %s\n", last_error_str);
-        ret = -1;
-    }
-    return ret;
-}
-#else
 /**
  * @brief Encapsulates the call to trigger an image capture. No image
  * acquisition or frame transfer logic.
@@ -2261,44 +1412,6 @@ int imageCapture()
     }
     return ret;
 }
-#endif
-
-
-#ifndef IDS_PEAK
-/**
- * @brief Transfer the captured image from the allocated camera shared memory
- * to a 16-bit local buffer. This function encapsulates any bit unpacking
- * required to translate from the image capture format to the working format.
- * @details For real-time applications, it's recommended to allocate the
- * required memory for shuffling around the image data one time at
- * initialization, rather than dynamically, which could reduce determinism or
- * fail during operation.
- * 
- * @param pUnpackedImage pointer to destination memory for the unpacked image.
- * IT IS THE CALLER'S RESPONSIBILITY TO PROVIDE ADEQUATE MEMORY ALLOCATION FOR
- * THE UNPACKED IMAGE.
- * @return int status: -1 for failure, 0 otherwise.
- */
-int imageTransfer(uint16_t* pUnpackedImage)
-{
-    int ret = 0;
-    // get the image from memory: abuse GetActSeqBuf to give us the pointer to
-    // ppcMemLast, a pointer to the pointer to the image memory that was last
-    // used for capturing an image.
-    char* pDummyMem; // Required for call, unused
-    uint16_t* pLocalMem;
-    if (is_GetActSeqBuf(camera_handle, &buffer_num, (char **) &pDummyMem, 
-        (char **) &pLocalMem) != IS_SUCCESS) {
-        cam_error = printCameraError();
-        printf("Error retrieving the active image memory: %s.\n", cam_error);
-        return -1;
-    }
-
-    unpack_mono12(pLocalMem, pUnpackedImage, CAMERA_NUM_PX);
-
-    return 0;
-}
-#else
 
 
 /**
@@ -2318,7 +1431,7 @@ int imageTransfer(uint16_t* pUnpackedImage)
     peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
     double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
     getExposureTime(&actualExpTimeMs);
-    uint32_t three_frame_times_timeout_ms = (uint32_t)(3000.0 * actualExpTimeMs + 0.5);
+    uint32_t three_frame_times_timeout_ms = (uint32_t)(3.0 * actualExpTimeMs + 0.5);
 
     if (verbose) {
         printf("imageTransfer: Waiting for frame...\n");
@@ -2424,7 +1537,7 @@ int setBinningFactor(uint8_t factor)
     if (PEAK_TRUE == peak_Acquisition_IsStarted(hCam)) {
         status = peak_Acquisition_Stop(hCam);
         if (!checkForSuccess(status)) {
-            fprintf(stderr, "ERROR: Failed to stop image acquisition. Exiting "
+            fprintf(stderr, "ERROR: Failed to stop image acquisition."
                 "anyway.\n");
             return -1;
         }
@@ -2448,7 +1561,8 @@ int setBinningFactor(uint8_t factor)
             if (!checkForSuccess(status)) {
                 fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
                 closeCamera();
-                exit(EXIT_FAILURE);
+                clean();
+                return -1;
             }
             return -1;
         }
@@ -2460,7 +1574,8 @@ int setBinningFactor(uint8_t factor)
         if (!checkForSuccess(status)) {
             fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
             closeCamera();
-            exit(EXIT_FAILURE);
+            clean();
+            return -1;
         }
         return -1;
     }
@@ -2470,7 +1585,8 @@ int setBinningFactor(uint8_t factor)
     if (!checkForSuccess(status)) {
         fprintf(stderr, "ERROR: Failed to start image acquisition. Exiting.\n");
         closeCamera();
-        exit(EXIT_FAILURE);
+        clean();
+        return -1;
     }
 
     return 0;
@@ -2496,117 +1612,12 @@ int restoreBinningFactor(void)
 
 
 /**
- * @brief Measure image sharpness using the peak IPL
- * 
- * @param pSharpness to double to store sharpness value
- * @return int status: -1 for failure, 0 otherwise.
- */
-int measureSharpness(double* pSharpness)
-{
-    START(tstart);
-    int ret = 0;
-    peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
-    double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
-    getExposureTime(&actualExpTimeMs);
-    uint32_t three_frame_times_timeout_ms = (uint32_t)(3000.0 * actualExpTimeMs + 0.5);
-
-    if (verbose) {
-        printf("measureSharpness: Waiting for frame...\n");
-    }
-
-    // ---------------------------------------------------------------------- //
-    // Actual data transfer
-    // ---------------------------------------------------------------------- //
-    // wait for image transfer
-    peak_status status = peak_Acquisition_WaitForFrame(hCam,
-        three_frame_times_timeout_ms, &hFrame);
-    if(status == PEAK_STATUS_TIMEOUT) {
-        fprintf(stderr, "ERROR: WaitForFrame timed out after 3 frame times.\n");
-        return -1;
-    } else if(status == PEAK_STATUS_ABORTED) {
-        fprintf(stderr, "ERROR: WaitForFrame aborted by camera.\n");
-        return -1;
-    } else if(!checkForSuccess(status)) {
-        fprintf(stderr, "ERROR: WaitForFrame failed.\n");
-        return -1;
-    }
-
-    // At this point we successfully got a frame handle. We need to release it
-    // when done!
-    if(peak_Frame_IsComplete(hFrame) == PEAK_FALSE) {
-        printf("WARNING: Incomplete frame transfer.\n");
-    }
-
-    if (verbose) {
-        printf("imageTransfer: Got frame, unpacking...\n");
-    }
-
-    // Only unpack to global application image memory if there's a GUI client
-    // who might receive it
-    if (num_clients > 0) {
-        // get image from frame handle
-        peak_buffer buffer = {NULL, 0, NULL};
-        status = peak_Frame_Buffer_Get(hFrame, &buffer);
-        if(!checkForSuccess(status)) {
-            fprintf(stderr, "ERROR: Failed to get buffer from frame.\n");
-            return -1;
-        }
-        unpack_mono12((uint16_t *)buffer.memoryAddress, unpacked_image,
-            CAMERA_NUM_PX / (CAMERA_FOCUS_BINFACTOR * CAMERA_FOCUS_BINFACTOR));
-    }
-
-    // measure sharpness
-    uint32_t border = 4U; // blank pixels around active array
-    peak_position offset = {
-        .x = border,
-        .y = border
-    };
-    peak_size size = {
-        .width = CAMERA_WIDTH / CAMERA_FOCUS_BINFACTOR,
-        .height = CAMERA_HEIGHT / CAMERA_FOCUS_BINFACTOR
-    };
-    peak_roi roi = {
-        .offset = offset,
-        .size = size
-    };
-    status = peak_ROI_Get(hCam, &roi);
-    if(!checkForSuccess(status)) {
-        fprintf(stderr, "ERROR: peak_ROI_Get failed.\n");
-    }
-    // PEAK_SHARPNESS_ALGORITHM_SOBEL
-    // PEAK_SHARPNESS_ALGORITHM_TENENGRAD
-    // PEAK_SHARPNESS_ALGORITHM_MEAN_SCORE
-    // PEAK_SHARPNESS_ALGORITHM_HISTOGRAM_VARIANCE
-    // required to avoid error with bad ROI size. Why is asking for the ROI we
-    // just queried in error? God only knows
-    roi.size.width = roi.size.width - border;
-    roi.size.height = roi.size.height - border;
-    status = peak_IPL_Sharpness_Measure(hFrame, roi,
-        PEAK_SHARPNESS_ALGORITHM_SOBEL, pSharpness);
-    if(!checkForSuccess(status)) {
-        fprintf(stderr, "ERROR: peak_IPL_Sharpness_Measure failed.\n");
-        ret = -1;
-    }
-
-    status = peak_Frame_Release(hCam, hFrame);
-    if(!checkForSuccess(status)) {
-        fprintf(stderr, "ERROR: Frame_Release failed.\n");
-        ret = -1;
-    }
-    STOP(tend);
-    DISPLAY_DELTA("sharpness time", DELTA(tend, tstart));
-
-    return ret;
-}
-
-
-/**
  * @brief Measure image sharpness using the our own methods
  * 
  * @param pSharpness to double to store sharpness value
  * @return int status: -1 for failure, 0 otherwise.
  */
-int measureSharpnessDIY(double* pSharpness)
+int measureSharpness(double* pSharpness)
 {
     START(tstart);
     int ret = 0;
@@ -2629,7 +1640,7 @@ int measureSharpnessDIY(double* pSharpness)
     peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
     double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
     getExposureTime(&actualExpTimeMs);
-    uint32_t three_frame_times_timeout_ms = (uint32_t)(3000.0 * actualExpTimeMs + 0.5);
+    uint32_t three_frame_times_timeout_ms = (uint32_t)(3.0 * actualExpTimeMs + 0.5);
 
     if (verbose) {
         printf("measureSharpness: Waiting for frame...\n");
@@ -2749,23 +1760,6 @@ int renewCameraHotPixels(void)
     }
     return 0;
 }
-#endif
-
-
-#ifndef IDS_PEAK
-/* Function to establish the parameters for saving images taken by the camera.
-** Input: None.
-** Output: None (void).
-*/
-void setSaveImage()
-{
-    ImageFileParams.pwchFileName = L"save1.png"; // BMP not supported for >8bit
-    ImageFileParams.pnImageID = NULL;
-    ImageFileParams.ppcImageMem = NULL;
-    ImageFileParams.nQuality = 100;
-    ImageFileParams.nFileType = IS_IMG_PNG;
-}
-#endif
 
 
 /* Function to mask hot pixels accordinging to static and dynamic maps.
@@ -3348,30 +2342,6 @@ void part(double * A, int p, int r, double * X, double * Y)
 }
 
 
-#ifndef IDS_PEAK
-/* Function to load saved images (likely from previous observing sessions, but 
-** could also be test pictures).
-** Inputs: the name of the image to be loaded (filename) and the active image 
-** memory (buffer).
-** Outputs: A flag indicating successful loading of the image or not.
-*/
-int loadDummyPicture(char* filename, char** buffer)
-{
-    ImageFileParams.ppcImageMem = buffer;
-    ImageFileParams.pwchFileName = (wchar_t*)filename;
-    ImageFileParams.ppcImageMem = NULL;
-    if (is_ImageFile(camera_handle, IS_IMAGE_FILE_CMD_LOAD, 
-                     (void *) &ImageFileParams, sizeof(ImageFileParams)) 
-                     != IS_SUCCESS) {
-        return -1;
-    } else {
-        return 1;
-    }
-    ImageFileParams.ppcImageMem = NULL;
-}
-#endif
-
-
 /* Function to make table of stars from image for displaying in Kst (mostly for 
 ** testing).
 ** Inputs: The name of blob table file, array of blob magnitudes, array of blob 
@@ -3520,20 +2490,22 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
             all_camera_params->focus_mode = 0;
             if (restoreBinningFactor() < 0) {
                 closeCamera();
-                exit(EXIT_FAILURE);
+                clean();
+                return -1;
             }
             return -1;
         }
         taking_image = 0;
 
         double sharpness = 0.0;
-        if (measureSharpnessDIY(&sharpness) < 0) {
+        if (measureSharpness(&sharpness) < 0) {
             fprintf(stderr, "Could not complete sharpness measurement: %s.\n", 
             strerror(errno));
             all_camera_params->focus_mode = 0;
             if (restoreBinningFactor() < 0) {
                 closeCamera();
-                exit(EXIT_FAILURE);
+                clean();
+                return -1;
             }
             return -1;
         };
@@ -3583,7 +2555,8 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
 
     if (restoreBinningFactor() < 0) {
         closeCamera();
-        exit(EXIT_FAILURE);
+        clean();
+        return -1;
     }
 
     if (verbose) {
@@ -3722,8 +2695,7 @@ int doCameraAndAstrometry(void)
             return -1;
         }
 
-        // NOTE(evanmayer): After switching to the iDS peak API, this logging
-        // will be deprecated. We'll save this info in the FITS files instead.
+        // NOTE(evanmayer): This info is also saved to FITS headers.
         strftime(buff, sizeof(buff), "%B %d Observing Session - beginning "
                                      "%H:%M:%S GMT", tm_info);
         fprintf(fptr, "\n");
@@ -3762,104 +2734,12 @@ int doCameraAndAstrometry(void)
 
     // if we are at the start of auto-focusing (either when camera first runs or 
     // user re-enters auto-focusing mode)
-    #ifdef AF_ALGORITHM_NEW
-    // Hijack AF with new alg, which should set
-    // all_camera_params.focus_mode = 0 when done to bypass old AF
     if (all_camera_params.begin_auto_focus && all_camera_params.focus_mode) {
         solveState = AUTOFOCUS;
         doContrastDetectAutoFocus(&all_camera_params, tm_info, output_buffer);
         all_camera_params.focus_mode = 0;
     }
-    #endif
-    if (all_camera_params.begin_auto_focus && all_camera_params.focus_mode) {
-        num_focus_pos = 0;
-        send_data = 0;
 
-        // check that our blob magnitude array is big enough for number of
-        // photos we take per auto-focusing position
-        if (all_camera_params.photos_per_focus != default_focus_photos) {
-            printf("Reallocating blob_mags array to allow for different # of "
-                   "auto-focusing pictures.\n");
-            default_focus_photos = all_camera_params.photos_per_focus;
-            blob_mags = realloc(blob_mags, sizeof(int) * default_focus_photos);
-        }
-
-        // check that end focus position is at least 25 less than max focus
-        // position
-        if (all_camera_params.max_focus_pos - all_camera_params.end_focus_pos 
-            < 25) {
-            printf("Adjusting end focus position to be 25 less than max focus "
-                   "position.");
-            all_camera_params.end_focus_pos = all_camera_params.max_focus_pos 
-                                              - 25;
-        }
-
-        // check that beginning focus position is at least 25 above min focus
-        // position
-        if (all_camera_params.start_focus_pos - all_camera_params.min_focus_pos
-            < 25) {
-            printf("Adjusting beginning focus position to be 25 more than min "
-                   "focus position.");
-            all_camera_params.start_focus_pos = all_camera_params.min_focus_pos
-                                                + 25;
-        }
-
-        // get to beginning of auto-focusing range
-        if (beginAutoFocus() < 1) {
-            printf("Error beginning auto-focusing process. Skipping to taking "
-                   "observing images...\n");
-
-            // return to default focus position
-            if (defaultFocusPosition() < 1) {
-                printf("Error moving to default focus position.\n");
-                closeCamera();
-                return -1;
-            }
-
-            // abort auto-focusing process
-            all_camera_params.focus_mode = 0;
-        }
-        
-        usleep(1000000); 
-
-        if (af_file != NULL) {
-            fclose(af_file);
-            af_file = NULL;
-        }
-
-        // clear previous contents of auto-focusing file (open in write mode)
-        strftime(
-            af_filename,
-            sizeof(af_filename),
-            "/home/starcam/Desktop/TIMSC/auto_focus_starting_%Y-%m-%d_%H-%M-%S.txt",
-            tm_info
-        );
-        if (verbose) {
-            printf("Opening auto-focusing text file: %s\n", af_filename);
-        }
-
-        if ((af_file = fopen(af_filename, "w")) == NULL) {
-            fprintf(stderr, "Could not open auto-focusing file: %s.\n", 
-                    strerror(errno));
-            return -1;
-        }
-
-        all_camera_params.begin_auto_focus = 0;
-
-        // turn dynamic hot pixels off to avoid removing blobs during focusing
-        prev_dynamic_hp = all_blob_params.dynamic_hot_pixels;
-        if (verbose) {
-            printf("Turning dynamic hot pixel finder off for auto-focusing.\n");
-        }
-        all_blob_params.dynamic_hot_pixels = 0;
-        
-        // link the auto-focusing txt file to Kst for plotting
-        unlink("/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
-        symlink(af_filename, 
-                "/home/starcam/Desktop/TIMSC/latest_auto_focus_data.txt");
-    }
-
-    #ifdef IDS_PEAK
     // If the user has triggered a new hot pixel mask, or want to be using 
     // dynamic hot pixel masking, re-make the mask internal hot pixel list
     // before capture.
@@ -3868,7 +2748,6 @@ int doCameraAndAstrometry(void)
             fprintf(stderr, "Could not re-make internal hot pixel mask.\n");
         }
     }
-    #endif
 
     solveState = IMAGE_CAP;
     taking_image = 1;
@@ -3895,20 +2774,11 @@ int doCameraAndAstrometry(void)
     photo_time = tv.tv_sec + ((double) tv.tv_usec)/1000000.;
     all_astro_params.photo_time = photo_time;
 
-    #ifndef IDS_PEAK
     if (imageTransfer(unpacked_image) < 0) {
         fprintf(stderr, "Could not complete image transfer: %s.\n", 
            strerror(errno));
         return -1;
     }
-    #else
-    if (imageTransfer(unpacked_image) < 0) {
-        fprintf(stderr, "Could not complete image transfer: %s.\n", 
-           strerror(errno));
-        return -1;
-    }
-    #endif
-
 
     // TODO(evanmayer): implement a FITS image loader
     // testing pictures that have already been taken
@@ -3999,219 +2869,67 @@ int doCameraAndAstrometry(void)
         fprintf(stderr, "Error starting camera timer: %s.\n", strerror(errno));
     }
 
-    // now have to distinguish between auto-focusing actions and solving
-    // ECM N.B.: If AF_ALGORITHM_NEW defined, you'll never go in here
-    if (all_camera_params.focus_mode && !all_camera_params.begin_auto_focus) {
-        solveState = AUTOFOCUS;
-        int brightest_blob, max_flux, focus_step;
-        int brightest_blob_x, brightest_blob_y = 0;
-        char focus_str_cmd[10];
-        char time_str[100];
+    double start, end, camera_time;
+    send_data = 1;
 
-        if (verbose) {
-            printf("\n>> Still auto-focusing!\n");
-        }
-
-        // find the brightest blob per picture
-        brightest_blob = -1;
-        for (int blob = 0; blob < blob_count; blob++) {
-            if (star_mags[blob] > brightest_blob) {
-                brightest_blob = star_mags[blob];
-                brightest_blob_x = (int) star_x[blob];
-                brightest_blob_y = (int) star_y[blob];
-            }
-        }
-        blob_mags[af_photo++] = brightest_blob;
-        printf("Brightest blob for photo %d at focus %d has value %d.\n", 
-               af_photo, all_camera_params.focus_position, brightest_blob);
-
-        strftime(time_str, sizeof(time_str), "%Y-%m-%d_%H-%M-%S", tm_info);
-        sprintf(date, "/home/starcam/Desktop/TIMSC/img/auto_focus_at_%d_"
-                      "brightest_blob_%d_at_x%d_y%d_%s.png", 
-                all_camera_params.focus_position, brightest_blob, 
-                brightest_blob_x, brightest_blob_y, time_str);
-        if (verbose) {
-            printf("Saving auto-focusing image as: %s\n", date);
-        }
-        snprintf(filename, 256, "%s", date);
-
-        if (af_photo >= all_camera_params.photos_per_focus) {
-            if (verbose) {
-                printf("> Processing auto-focus images for focus %d -> do not "
-                       "take an image...\n", all_camera_params.focus_position);
-            }
-
-            // find brightest of three brightest blobs for this batch of images
-            max_flux = -1;
-            for (int i = 0; i < all_camera_params.photos_per_focus; i++) {
-                if (blob_mags[i] > max_flux) {
-                    max_flux = blob_mags[i];
-                }
-            }
-           
-            all_camera_params.flux = max_flux;
-            printf("(*) Brightest blob among %d photos for focus %d is %d.\n", 
-                   all_camera_params.photos_per_focus, 
-                   all_camera_params.focus_position,
-                   max_flux);
-
-            fprintf(af_file, "%3d\t%5d\n", max_flux,
-                    all_camera_params.focus_position);
-            fflush(af_file);
-
-            send_data = 1;
-
-            // if clients are listening and we want to guarantee data is sent to
-            // them before continuing with auto-focusing, wait until data_sent
-            // confirmation. If there are no clients, no need to slow down auto-
-            // focusing
-            if (num_clients > 0) {
-                while (!telemetry_sent) {
-                    if (verbose) {
-                        printf("> Waiting for data to send to client...\n");
-                    }
-
-                    usleep(100000);
-                }
-            }
-
-            send_data = 0;
-
-            // since we are moving to next focus, re-start photo counter and get
-            // rid of previous blob magnitudes
-            af_photo = 0;
-            for (int i = 0; i < all_camera_params.photos_per_focus; i++) {
-                blob_mags[i] = 0;
-            }
-
-            // We have moved to the end (or past) the end focus position, so
-            // calculate best focus and exit
-            if (all_camera_params.focus_position >= 
-                all_camera_params.end_focus_pos) {
-                int best_focus; 
-                all_camera_params.focus_mode = 0;
-                // at very last focus position
-                num_focus_pos++;
-                
-                best_focus = calculateOptimalFocus(num_focus_pos, af_filename);
-                if (best_focus == -1000) {
-                    // if we can't find optimal focus from auto-focusing data, 
-                    // just go to the default
-                    defaultFocusPosition();
-                } else {
-                    // if the calculated auto focus position is outside the
-                    // possible range, set it to corresponding nearest focus
-                    if (best_focus > all_camera_params.max_focus_pos) {
-                        printf("Auto focus is greater than max possible focus, "
-                               "so just use that.\n");
-                        best_focus = all_camera_params.max_focus_pos;
-                    } else if (best_focus < all_camera_params.min_focus_pos) {
-                        printf("Auto focus is less than min possible focus, "
-                               "so just use that.\n");
-                        // this outcome is highly unlikely but just in case
-                        best_focus = all_camera_params.min_focus_pos;
-                    }
-
-                    sprintf(focus_str_cmd, "mf %i\r", 
-                            best_focus - all_camera_params.focus_position);
-                    shiftFocus(focus_str_cmd);
-                }
-
-                fclose(af_file);
-                af_file = NULL;
-
-                // turn dynamic hot pixels back to whatever user had specified
-                if (verbose) {
-                    printf("> Auto-focusing finished, so restoring dynamic hot "
-                           "pixels to previous value...\n");
-                }
-
-                all_blob_params.dynamic_hot_pixels = prev_dynamic_hp;
-                if (verbose) {
-                    printf("Now all_blob_params.dynamic_hot_pixels = %d\n", 
-                           all_blob_params.dynamic_hot_pixels);
-                }
-            } else {
-                // Move to the next focus position if we still have positions to
-                // cover
-                focus_step = min(all_camera_params.focus_step, 
-                             all_camera_params.end_focus_pos - 
-                             all_camera_params.focus_position);
-                sprintf(focus_str_cmd, "mf %i\r", focus_step);
-                if (!cancelling_auto_focus) {
-                    shiftFocus(focus_str_cmd);
-                    usleep(100000);
-                }
-                num_focus_pos++;
-            }
-        }
-    } else {
-        double start, end, camera_time;
-        send_data = 1;
-
-        if (verbose) {
-            printf(">> No longer auto-focusing!\n");
-        }
-
-        strftime(date, sizeof(date), "/home/starcam/Desktop/TIMSC/img/"
-                                     "saved_image_%Y-%m-%d_%H-%M-%S.png", 
-                                     tm_info);
-        snprintf(filename, 256, "%s", date);
-
-        // write blob and time information to data file
-        strftime(buff, sizeof(buff), "%b %d %H:%M:%S", tm_info); 
-        printf("\nTime going into Astrometry.net: %s\n", buff);
-
-        if (fprintf(fptr, "%li,%s,", seconds, buff) < 0) {
-            fprintf(stderr, "Unable to write time and blob count to observing "
-                            "file: %s.\n", strerror(errno));
-        }
-        fflush(fptr);
-
-        // solve astrometry
-        if (verbose) {
-            printf("\n> Trying to solve astrometry...\n");
-        }
-
-        solveState = ASTROMETRY;
-        if (lostInSpace(star_x, star_y, star_mags, blob_count, tm_info, 
-                        datafile) != 1) {
-            printf("\n(*) Could not solve Astrometry.\n");
-        } else {
-            // let the astro thread know to send data
-            image_solved[0] = 1;
-            image_solved[1] = 1;
-        }
-
-        // get current time right after solving
-        if (clock_gettime(CLOCK_REALTIME, &camera_tp_end) == -1) {
-            fprintf(stderr, "Error ending timer: %s.\n", strerror(errno));
-        }
-
-        // calculate time it took camera program to run in nanoseconds
-        start = (double) (camera_tp_beginning.tv_sec*1e9) + 
-                (double) camera_tp_beginning.tv_nsec;
-        end = (double) (camera_tp_end.tv_sec*1e9) + 
-              (double) camera_tp_end.tv_nsec;
-        camera_time = end - start;
-        printf("(*) Camera completed one round in %f msec.\n", 
-               camera_time*1e-6);
-
-        // write this time to the data file
-        if (fprintf(fptr, ",%f\n", camera_time*1e-6) < 0) {
-            fprintf(stderr, "Unable to write Astrometry solution time to "
-                            "observing file: %s.\n", strerror(errno));
-        }
-        fflush(fptr);
-        fclose(fptr);
-        fptr = NULL;
+    if (verbose) {
+        printf(">> Not currently auto-focusing!\n");
     }
 
-    #ifndef IDS_PEAK
-    saveImageToDisk(filename);
-    #else
+    strftime(date, sizeof(date), "/home/starcam/Desktop/TIMSC/img/"
+                                    "saved_image_%Y-%m-%d_%H-%M-%S.png", 
+                                    tm_info);
+    snprintf(filename, 256, "%s", date);
+
+    // write blob and time information to data file
+    strftime(buff, sizeof(buff), "%b %d %H:%M:%S", tm_info); 
+    printf("\nTime going into Astrometry.net: %s\n", buff);
+
+    if (fprintf(fptr, "%li,%s,", seconds, buff) < 0) {
+        fprintf(stderr, "Unable to write time and blob count to observing "
+                        "file: %s.\n", strerror(errno));
+    }
+    fflush(fptr);
+
+    // solve astrometry
+    if (verbose) {
+        printf("\n> Trying to solve astrometry...\n");
+    }
+
+    solveState = ASTROMETRY;
+    if (lostInSpace(star_x, star_y, star_mags, blob_count, tm_info, 
+                    datafile) != 1) {
+        printf("\n(*) Could not solve Astrometry.\n");
+    } else {
+        // let the astro thread know to send data
+        image_solved[0] = 1;
+        image_solved[1] = 1;
+    }
+
+    // get current time right after solving
+    if (clock_gettime(CLOCK_REALTIME, &camera_tp_end) == -1) {
+        fprintf(stderr, "Error ending timer: %s.\n", strerror(errno));
+    }
+
+    // calculate time it took camera program to run in nanoseconds
+    start = (double) (camera_tp_beginning.tv_sec*1e9) + 
+            (double) camera_tp_beginning.tv_nsec;
+    end = (double) (camera_tp_end.tv_sec*1e9) + 
+            (double) camera_tp_end.tv_nsec;
+    camera_time = end - start;
+    printf("(*) Camera completed one round in %f msec.\n", 
+            camera_time*1e-6);
+
+    // write this time to the data file
+    if (fprintf(fptr, ",%f\n", camera_time*1e-6) < 0) {
+        fprintf(stderr, "Unable to write Astrometry solution time to "
+                        "observing file: %s.\n", strerror(errno));
+    }
+    fflush(fptr);
+    fclose(fptr);
+    fptr = NULL;
+
     saveFITStoDisk(unpacked_image);
-    #endif
 
     // printf("Saving captured frame to \"%s\"\n", filename);
     // unlink whatever the latest saved image was linked to before
@@ -4233,11 +2951,11 @@ int doCameraAndAstrometry(void)
         if (output_buffer != NULL) {
             free(output_buffer);
         }
-        
+
         if (mask != NULL) {
             free(mask);
         }
-        
+
         if (blob_mags != NULL) {
             free(blob_mags);
         }
@@ -4245,11 +2963,11 @@ int doCameraAndAstrometry(void)
         if (star_x != NULL) {
             free(star_x);
         }
-        
+
         if (star_y != NULL) {
             free(star_y);
         }
-        
+
         if (star_mags != NULL) {
             free(star_mags);
         }

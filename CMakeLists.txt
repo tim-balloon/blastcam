@@ -72,10 +72,6 @@ target_link_libraries (${PROJECT_NAME}
     m
 )
 
-# required to conditionally compile starcam code until we remove dependency on
-# ueye old api
-add_compile_definitions(IDS_PEAK)
-
 # Add postbuild step to copy ids_peak_comfort_c dependencies
 ids_peak_comfort_c_deploy(${PROJECT_NAME})
 
