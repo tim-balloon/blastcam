@@ -313,6 +313,9 @@ int initLensAdapter(char * path) {
         return -1;
     }
 
+    if (verbose) {
+        printf("Learning focus range\n");
+    }
     if (runCommand("la\r", file_descriptor, birger_output) == -1) {
         printf("Failed to learn current focus range.\n");
         return -1;
@@ -322,10 +325,20 @@ int initLensAdapter(char * path) {
     // amount of time, and we do this one time on init.
     usleep(1000000);
 
+    if (verbose) {
+        printf("Moving to infinity\n");
+    }
     // After learning focus range, try to move to infinity.
     if (runCommand("mi\r", file_descriptor, birger_output) == -1) {
         printf("Failed to move focus position to infinity.\n");
         return -1;
+    }
+
+    // Same here. Entire focus range takes a while to move
+    usleep(1000000);
+
+    if (verbose) {
+        printf("Moving to default focus offset\n");
     }
     // "mf ": 3
     // encoder pos: up to 5
@@ -433,7 +446,7 @@ int defaultFocusPosition() {
            "default focus - focus position = %d\n",default_focus, 
            all_camera_params.focus_position, 
            default_focus - all_camera_params.focus_position);
-    sprintf(focus_str_cmd, "mf %i\r", 
+    sprintf(focus_str_cmd, "mf %i\r",
             default_focus - all_camera_params.focus_position);
     if (runCommand(focus_str_cmd, file_descriptor, birger_output) == -1) {
         printf("Failed to move the focus to the default position.\n");
@@ -667,10 +680,10 @@ int adjustCameraHardware() {
     return ret;
 }
 
-/* Function to execute built-in Birger commands.
-** Input: The string identifier for the command, the file descriptor for lens
-** adapter, and a string to print the Birger output to for verification.
-** Output: Flag indicating successful execution of the command.
+/** Function to execute built-in Birger commands.
+ * Input: The string identifier for the command, the file descriptor for lens
+ * adapter, and a string to print the Birger output to for verification.
+ * Output: Flag indicating successful execution of the command.
 */
 int runCommand(const char * command, int file, char * return_str) {
     fd_set input, output;
@@ -707,7 +720,7 @@ int runCommand(const char * command, int file, char * return_str) {
         return -1;
     }
 
-    buffer = malloc(100);
+    buffer = calloc(100, sizeof(char));
     if (buffer == NULL) {
         fprintf(stderr, "Error allocating buffer in runCommand(): %s.\n", 
                 strerror(errno));
@@ -723,14 +736,14 @@ int runCommand(const char * command, int file, char * return_str) {
     }
 
     buffer[99] = '\0';
-    buffer[status] = '\0';	
+    buffer[status] = '\0';
     if (strstr(buffer, "ERR") != NULL) {
         printf("Read returned error %s.\n", buffer);
         return -1;
     }
     
     // copy buffer over to return_str for printing to terminal
-    return_str = malloc(100);
+    return_str = calloc(100, sizeof(char));
     if (return_str == NULL) {
         fprintf(stderr, "Error allocating return string for printing to "
                         "terminal in runCommand(): %s.\n", strerror(errno));
@@ -740,13 +753,23 @@ int runCommand(const char * command, int file, char * return_str) {
     strcpy(return_str, buffer);
 
     if (strcmp(command, "fp\r") == 0) {
-        printf("%s\n", return_str);
-
+        // Catch a special case: commanding fp while a move is occurring may
+        // result in the move distance confirmation being printed into the
+        // buffer:
+        // ```
+        // DONE-6649,0
+        // fp
+        // OK
+        // fmin:-1004  fmax:6963  current:-200
+        // ```
+        // Handle this by making sscanf skip until the first colon. (%*[^:])
         // parse the return_str for new focus range numbers
-        sscanf(return_str, "fp\nOK\nfmin:%d  fmax:%d  current:%i %*s", 
+        if (sscanf(return_str, "%*[^:]:%d  fmax:%d  current:%i %*s", 
                &all_camera_params.min_focus_pos, 
                &all_camera_params.max_focus_pos, 
-               &all_camera_params.focus_position);
+               &all_camera_params.focus_position) < 0) {
+            fprintf(stderr, "fp read failed! %s\n", strerror(errno));
+        }
         if (verbose) {
             printf("in camera params, min focus pos is: %i\n", 
                    all_camera_params.min_focus_pos);
