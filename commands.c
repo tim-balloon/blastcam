@@ -237,9 +237,9 @@ void * updateAstrometry() {
         // in triggered mode we don't want to sleep, triggers handle
         // all of the waiting time that we need with a sleep loop
         {
-            printf("Sleeping between frames...\n");
-            int timeBetweenFramesSec = 5;
-            sleep(timeBetweenFramesSec);
+            float timeBetweenFramesSec = 5.0;
+            printf("Sleeping between frames: %f sec...\n", timeBetweenFramesSec);
+            usleep(timeBetweenFramesSec * 1000000);
         }
     }
     // when we are shutting down or exiting, close Astrometry engine and solver

@@ -1640,7 +1640,9 @@ int measureSharpness(double* pSharpness)
     peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
     double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
     getExposureTime(&actualExpTimeMs);
-    uint32_t three_frame_times_timeout_ms = (uint32_t)(3.0 * actualExpTimeMs + 0.5);
+
+    // For short exposures (10 ms), it seems 3x is too short sometimes?
+    uint32_t timeout_ms = (uint32_t)(10.0 * actualExpTimeMs + 0.5);
 
     if (verbose) {
         printf("measureSharpness: Waiting for frame...\n");
@@ -1651,9 +1653,9 @@ int measureSharpness(double* pSharpness)
     // ---------------------------------------------------------------------- //
     // wait for image transfer
     peak_status status = peak_Acquisition_WaitForFrame(hCam,
-        three_frame_times_timeout_ms, &hFrame);
+        timeout_ms, &hFrame);
     if(status == PEAK_STATUS_TIMEOUT) {
-        fprintf(stderr, "ERROR: WaitForFrame timed out after 3 frame times.\n");
+        fprintf(stderr, "ERROR: WaitForFrame timed out after 10 frame times.\n");
         return -1;
     } else if(status == PEAK_STATUS_ABORTED) {
         fprintf(stderr, "ERROR: WaitForFrame aborted by camera.\n");
@@ -2380,8 +2382,8 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     // AF tracking
     uint16_t numFocusPos = 0;
     // A upper bound on focus tries guards against focusing forever
-    // If someone accidentally orders an 8000-range, 5-step AF run or worse, we'll
-    // cut out early
+    // If someone accidentally orders an 8000-range / 5 steps per step AF run or
+    //  worse, we'll cut out early
     uint16_t remainingFocusPos = 1600; 
     char focusStrCmd[10] = {'\0'};
 
@@ -2447,10 +2449,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
 
     // Loop until all focus positions covered
     bool hasGoneForward = 0;
-    bool hasGoneBackward = 0;
     bool atFarEnd = 0;
-    bool atNearEnd = 0;
-    int dir = 1;
 
     // Set binning to speed up sharpness measurement
     // NOTE: any return statements between here and the end of the focusing loop
@@ -2465,14 +2464,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     while (remainingFocusPos > 0) {
         remainingFocusPos -= 1;
         atFarEnd = (all_camera_params->focus_position >= all_camera_params->end_focus_pos);
-        atNearEnd = (all_camera_params->focus_position < all_camera_params->start_focus_pos);
-        if (atFarEnd) {
-            if (hasGoneForward && !hasGoneBackward) {
-                dir = -1;
-                hasGoneBackward = 1;
-            }
-        }
-        if (atNearEnd && hasGoneBackward) {
+        if (atFarEnd && hasGoneForward) {
             // Break out of AF
             all_camera_params->focus_mode = 0;
             printf("Quitting autofocus after fulfilling end conditions...\n");
@@ -2532,14 +2524,10 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         fflush(af_file);
 
         // Move to next position
-        // if (all_camera_params->focus_position >= all_camera_params->end_focus_pos) {
-        //     all_camera_params->focus_step *= -1;
-        // } // two-way AF
-        // int focusStep = min(
-        //     all_camera_params->focus_step,
-        //     all_camera_params->end_focus_pos -
-        //     all_camera_params->focus_position);
-        int focusStep = all_camera_params->focus_step * dir;
+        int focusStep = min(
+            all_camera_params->focus_step,
+            all_camera_params->end_focus_pos -
+            all_camera_params->focus_position);
         sprintf(focusStrCmd, "mf %i\r", focusStep);
         if (!cancelling_auto_focus) {
             shiftFocus(focusStrCmd);
@@ -2780,6 +2768,7 @@ int doCameraAndAstrometry(void)
         return -1;
     }
 
+    #ifndef TEST_FLIGHT
     // TODO(evanmayer): implement a FITS image loader
     // testing pictures that have already been taken
     // if you uncomment this for testing, you may need to change the path.
@@ -2929,8 +2918,6 @@ int doCameraAndAstrometry(void)
     fclose(fptr);
     fptr = NULL;
 
-    saveFITStoDisk(unpacked_image);
-
     // printf("Saving captured frame to \"%s\"\n", filename);
     // unlink whatever the latest saved image was linked to before
     // unlink("/home/starcam/Desktop/TIMSC/imh/latest_saved_image.png");
@@ -2941,6 +2928,15 @@ int doCameraAndAstrometry(void)
     if (makeTable("makeTable.txt", star_mags, star_x, star_y, blob_count) != 1) {
         printf("Error (above) writing blob table for Kst.\n");
     }
+    #else
+    // make kst display the filtered image 
+    memcpy(output_buffer, unpacked_image, CAMERA_NUM_PX * sizeof(uint16_t));
+    // pass off the image bytes for sending to clients
+    memcpy(camera_raw, output_buffer, CAMERA_NUM_PX * sizeof(uint16_t));
+    send_data = 1;
+    #endif
+
+    saveFITStoDisk(unpacked_image);
 
     // free alloc'd variables when we are shutting down
     if (shutting_down) {

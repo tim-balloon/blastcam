@@ -28,6 +28,10 @@ add_executable (${PROJECT_NAME}
     sc_data_structures.h
 )
 
+# conditional compile options
+# TEST_FLIGHT only used for test flight: compiles out astrometry routine
+target_compile_definitions(${PROJECT_NAME} PUBLIC TEST_FLIGHT)
+
 # Command compiler to use C99 standard (required by ids_peak_comfort_c)
 set_target_properties(${PROJECT_NAME}
     PROPERTIES
