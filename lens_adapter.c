@@ -323,7 +323,7 @@ int initLensAdapter(char * path) {
 
     // OK to usleep here, because we DO expect this move to take an appreciable
     // amount of time, and we do this one time on init.
-    usleep(1000000);
+    usleep((int)1e6);
 
     if (verbose) {
         printf("Moving to infinity\n");
@@ -335,7 +335,7 @@ int initLensAdapter(char * path) {
     }
 
     // Same here. Entire focus range takes a while to move
-    usleep(1000000);
+    usleep((int)1e6);
 
     if (verbose) {
         printf("Moving to default focus offset\n");

@@ -239,7 +239,7 @@ void * updateAstrometry() {
         {
             float timeBetweenFramesSec = 1.0;
             printf("Sleeping between frames: %f sec...\n", timeBetweenFramesSec);
-            usleep(timeBetweenFramesSec * 1000000);
+            usleep(timeBetweenFramesSec * (int)1e6);
         }
     }
     // when we are shutting down or exiting, close Astrometry engine and solver
