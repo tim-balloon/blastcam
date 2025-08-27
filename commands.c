@@ -237,7 +237,7 @@ void * updateAstrometry() {
         // in triggered mode we don't want to sleep, triggers handle
         // all of the waiting time that we need with a sleep loop
         {
-            float timeBetweenFramesSec = 5.0;
+            float timeBetweenFramesSec = 1.0;
             printf("Sleeping between frames: %f sec...\n", timeBetweenFramesSec);
             usleep(timeBetweenFramesSec * 1000000);
         }

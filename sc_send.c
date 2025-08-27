@@ -45,7 +45,7 @@ static int populate_parameter_packet(struct star_cam_return * packet_data) {
     packet_data->exposureTime = all_camera_params.exposure_time;
     packet_data->gainFact = all_camera_params.gainfact;
     packet_data->solveTimeLimit = all_astro_params.timelimit;
-    packet_data->focusMode = all_camera_params.focus_position;
+    packet_data->focusPos = all_camera_params.focus_position;
     packet_data->minFocusPos = all_camera_params.min_focus_pos;
     packet_data->maxFocusPos = all_camera_params.max_focus_pos;
     packet_data->focusMode = all_camera_params.focus_mode;

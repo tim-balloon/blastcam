@@ -102,7 +102,7 @@ void process_command_packet(struct star_cam_capture data){
         command_lock = 1; // I am using these now
         if (data.update_logOdds == 1)
         {
-            printf("Received update to LOGODDS parameter");
+            printf("Received update to LOGODDS parameter\n");
             all_astro_params.logodds = data.logOdds;
         }
         if (data.update_lat == 1)
@@ -127,7 +127,7 @@ void process_command_packet(struct star_cam_capture data){
         }
         if (data.update_focusMode == 1)
         {
-            printf("Received update to FOCUS MODE parameter\n");
+            printf("Received update to FOCUS MODE parameter: %d\n", data.focusMode);
             // big chunk lifted from XSC code
            if (!data.focusMode && all_camera_params.focus_mode) {
                 printf("\n> Cancelling auto-focus process!\n");
@@ -147,18 +147,18 @@ void process_command_packet(struct star_cam_capture data){
         }
         if (data.update_startPos == 1)
         {
-            printf("Received update to AUTOFOCUS START POSITION parameter\n");
+            printf("Received update to AUTOFOCUS START POSITION parameter: %d\n", data.startPos);
             printf("Parameter was %d updated to %d\n",all_camera_params.start_focus_pos, data.startPos);
             all_camera_params.start_focus_pos = data.startPos;
         }
         if (data.update_endPos == 1)
         {
-            printf("Received update to AUTOFOCUS END POSITION parameter\n");
+            printf("Received update to AUTOFOCUS END POSITION parameter: %d\n", data.endPos);
             all_camera_params.end_focus_pos = data.endPos;
         }
         if (data.update_focusStep == 1)
         {
-            printf("Received update to AUTOFOCUS STEP SIZE parameter\n");
+            printf("Received update to AUTOFOCUS STEP SIZE parameter: %d\n", data.focusStep);
             all_camera_params.focus_step = data.focusStep;
         }
         if (data.update_photosPerStep == 1)
@@ -223,7 +223,7 @@ void process_command_packet(struct star_cam_capture data){
         }
         if (data.update_exposureTime == 1)
         {
-            printf("Received update to EXPOSURE TIME parameter\n");
+            printf("Received update to EXPOSURE TIME parameter: %f\n", data.exposureTime);
             if (!all_camera_params.focus_mode && !cancelling_auto_focus) {
                 // if user adjusted exposure, set exposure to their value
                 if (ceil(data.exposureTime) != 
@@ -240,7 +240,7 @@ void process_command_packet(struct star_cam_capture data){
         }
         if (data.update_gainFact == 1)
         {
-            printf("Received update to GAIN parameter\n");
+            printf("Received update to GAIN parameter: %f\n", data.gainFact);
             if (!all_camera_params.focus_mode && !cancelling_auto_focus) {
                 // if user adjusted gain, set gainfact to their value
                 if (fabs(data.gainFact - all_camera_params.gainfact) > 1E-9) {
@@ -270,7 +270,7 @@ void process_command_packet(struct star_cam_capture data){
         }
         if (data.update_focusPos == 1)
         {
-            printf("Received update to FOCUS POSITION parameter\n");
+            printf("Received update to FOCUS POSITION parameter: %f\n", data.focusPos);
             if (!all_camera_params.focus_mode && !cancelling_auto_focus) {
                 // if user wants to change focus, change focus in camera params
                 all_camera_params.focus_position = data.focusPos;

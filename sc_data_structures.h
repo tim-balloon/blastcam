@@ -9,7 +9,12 @@
 #define SC_TRIGGER_PORT_FC1 "4952"
 #define SC_TRIGGER_PORT_FC2 "4953"
 
+#ifndef TEST_FLIGHT
 #define FC1_IP_ADDR "192.168.1.3"
+#else
+// For the test flight, commands come from a local program.
+#define FC1_IP_ADDR "127.0.0.1"
+#endif
 #define FC2_IP_ADDR "192.168.1.4"
 
 

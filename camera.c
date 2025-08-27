@@ -2461,9 +2461,12 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         return -1;
     }
 
+    int curFocusPos = all_camera_params->start_focus_pos;
+
     while (remainingFocusPos > 0) {
         remainingFocusPos -= 1;
-        atFarEnd = (all_camera_params->focus_position >= all_camera_params->end_focus_pos);
+        atFarEnd = ((curFocusPos >= all_camera_params->end_focus_pos) || 
+            (curFocusPos >= all_camera_params->max_focus_pos - 25));
         if (atFarEnd && hasGoneForward) {
             // Break out of AF
             all_camera_params->focus_mode = 0;
@@ -2524,6 +2527,7 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         fflush(af_file);
 
         // Move to next position
+        curFocusPos += all_camera_params->focus_step;
         int focusStep = min(
             all_camera_params->focus_step,
             all_camera_params->end_focus_pos -
@@ -2589,8 +2593,6 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     fclose(af_file);
     af_file = NULL;
 
-    // Necessary to avoid going into legacy autofocus mode if we drop out
-    // due to too many AF attempts.
     all_camera_params->focus_mode = 0;
     return 0;
 }
