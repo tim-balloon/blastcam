@@ -28,6 +28,10 @@ add_executable (${PROJECT_NAME}
     sc_data_structures.h
 )
 
+# conditional compile options
+# TEST_FLIGHT only used for test flight: compiles out astrometry routine
+target_compile_definitions(${PROJECT_NAME} PUBLIC TEST_FLIGHT)
+
 # Command compiler to use C99 standard (required by ids_peak_comfort_c)
 set_target_properties(${PROJECT_NAME}
     PROPERTIES
@@ -71,10 +75,6 @@ target_link_libraries (${PROJECT_NAME}
     cfitsio
     m
 )
-
-# required to conditionally compile starcam code until we remove dependency on
-# ueye old api
-add_compile_definitions(IDS_PEAK)
 
 # Add postbuild step to copy ids_peak_comfort_c dependencies
 ids_peak_comfort_c_deploy(${PROJECT_NAME})

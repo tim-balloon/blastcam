@@ -2,22 +2,10 @@
 #define CAMERA_H
 #include "astrometry.h"
 
-#ifdef IDS_PEAK
 #include <ids_peak_comfort_c/ids_peak_comfort_c.h>
 extern peak_camera_handle hCam;
-#else
-#include <ueye.h>
-extern HIDS camera_handle;
-#endif
 
-// SO Star Camera is 1936 width by 1216 height; BLAST is 1392 by 1040
-#ifndef IDS_PEAK
-#define CAMERA_WIDTH   1936 // [px]
-#define CAMERA_HEIGHT  1216 // [px]
-// pixel scale search range bounds -> 6.0 to 6.5 for SO, 6.0 to 7.0 for BLAST,
-#define MIN_PS         6.0  // [arcsec/px]
-#define MAX_PS         7.0  // [arcsec/px]
-#else
+
 // TIMSC is IMX542
 // Datasheet says array is 5328 x 3040, but this includes overscan. The number
 // recommended recording pixels is an area is 8px smaller each side.
@@ -26,7 +14,7 @@ extern HIDS camera_handle;
 // ~6.63 for TIMSC with 85mm lens
 #define MIN_PS         6.0  // [arcsec/px]
 #define MAX_PS         7.0  // [arcsec/px]
-#endif
+
 #define CAMERA_NUM_PX (CAMERA_WIDTH * CAMERA_HEIGHT)
 // higher than 2 requires FPGA binning. I noticed no speed gains from on-sensor
 // vs. FPGA, or even vs. on host. FPGA binning default.
@@ -97,16 +85,10 @@ int getNumberOfCameras(int* pNumCams);
 int setExposureTime(double exposureTimeMs);
 
 int imageCapture(void);
-#ifndef IDS_PEAK
-double getFps(void);
-int imageTransfer(uint16_t* pUnpackedImage);
-int saveImageToDisk(char* filename);
-#else
 int getFps(double* pCurrentFps);
 int imageTransfer(uint16_t* pUnpackedImage);
 int saveImageToDisk(char* filename, peak_frame_handle hFrame);
 int setMonoAnalogGain(double analogGain);
-#endif
 int doCameraAndAstrometry();
 void clean();
 void closeCamera();
