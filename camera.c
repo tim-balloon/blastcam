@@ -1431,6 +1431,8 @@ int imageTransfer(uint16_t* pUnpackedImage)
     peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
     double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
     getExposureTime(&actualExpTimeMs);
+    // Guard against truncation to 0. 0 is an invalid timeout.
+    actualExpTimeMs = fmax(1.0, actualExpTimeMs);
     uint32_t three_frame_times_timeout_ms = (uint32_t)(3.0 * actualExpTimeMs + 0.5);
 
     if (verbose) {
