@@ -273,7 +273,7 @@ void process_command_packet(struct star_cam_capture data){
             printf("Received update to FOCUS POSITION parameter: %f\n", data.focusPos);
             if (!all_camera_params.focus_mode && !cancelling_auto_focus) {
                 // if user wants to change focus, change focus in camera params
-                all_camera_params.focus_position = data.focusPos;
+                all_camera_params.focus_position = (int)data.focusPos;
             } else {
                 printf("In or entering auto-focusing mode, or cancelling "
                        "current auto-focus process, so ignore lens " 

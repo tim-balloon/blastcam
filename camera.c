@@ -775,6 +775,7 @@ int setMinPixelClock(void)
                         printf("\t- %f\n", pixelClockList[i]);
                     }
                 }
+                free(pixelClockList);
             }
         }
     }  else {
@@ -1682,6 +1683,10 @@ int measureSharpness(double* pSharpness)
     status = peak_Frame_Buffer_Get(hFrame, &buffer);
     if(!checkForSuccess(status)) {
         fprintf(stderr, "ERROR: Failed to get buffer from frame.\n");
+        status = peak_Frame_Release(hCam, hFrame);
+        if(!checkForSuccess(status)) {
+            fprintf(stderr, "ERROR: Frame_Release failed.\n");
+        }
         return -1;
     }
     unpack_mono12((uint16_t *)buffer.memoryAddress, unpacked_image,
@@ -2438,20 +2443,18 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     if (beginAutoFocus() < 1) {
         printf("Error beginning auto-focusing process. Skipping to taking "
                 "observing images...\n");
-        // return to default focus position
-        if (defaultFocusPosition() < 1) {
-            printf("Error moving to default focus position.\n");
-            all_camera_params->focus_mode = 0;
-            return -1;
-        }
 
         // abort auto-focusing process
         all_camera_params->focus_mode = 0;
     }
 
-    // Loop until all focus positions covered
-    bool hasGoneForward = 0;
-    bool atFarEnd = 0;
+    // Loop until all focus positions covered.
+    // AF proceeds backward from infinity downward...
+    // ECM found that lens reported reaching a stop at positions
+    // far from the 'la' learned inf stop...some kind of stickiness?
+    // We avoid this by stepping from high to low encoder positions.
+    bool hasGoneBackward = 0;
+    bool atNearEnd = 0;
 
     // Set binning to speed up sharpness measurement
     // NOTE: any return statements between here and the end of the focusing loop
@@ -2463,13 +2466,11 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         return -1;
     }
 
-    int curFocusPos = all_camera_params->start_focus_pos;
-
     while (remainingFocusPos > 0) {
         remainingFocusPos -= 1;
-        atFarEnd = ((curFocusPos >= all_camera_params->end_focus_pos) || 
-            (curFocusPos >= all_camera_params->max_focus_pos - 25));
-        if (atFarEnd && hasGoneForward) {
+        atNearEnd = ((all_camera_params->focus_position < (all_camera_params->start_focus_pos + all_camera_params->focus_step)) || 
+            (all_camera_params->focus_position <= all_camera_params->min_focus_pos + 25));
+        if (atNearEnd && hasGoneBackward) {
             // Break out of AF
             all_camera_params->focus_mode = 0;
             printf("Quitting autofocus after fulfilling end conditions...\n");
@@ -2529,17 +2530,22 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         fflush(af_file);
 
         // Move to next position
-        curFocusPos += all_camera_params->focus_step;
+        if (verbose) {
+            printf("Focus range min: %d, current: %d, max: %d\n",
+                all_camera_params->start_focus_pos,
+                all_camera_params->focus_position,
+                all_camera_params->end_focus_pos);
+        }
         int focusStep = min(
-            all_camera_params->focus_step,
-            all_camera_params->end_focus_pos -
-            all_camera_params->focus_position);
+            -all_camera_params->focus_step,
+            all_camera_params->focus_position -
+            all_camera_params->start_focus_pos);
         sprintf(focusStrCmd, "mf %i\r", focusStep);
         if (!cancelling_auto_focus) {
             shiftFocus(focusStrCmd);
         }
         numFocusPos++;
-        hasGoneForward = 1;
+        hasGoneBackward = 1;
 
         // for kst display?
         memcpy(output_buffer, unpacked_image, CAMERA_NUM_PX * sizeof(uint16_t));
