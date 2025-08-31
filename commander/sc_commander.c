@@ -27,7 +27,8 @@
 
 #include "shared_info.h"
 
-#define SAVE_FILE "./commands.txt"
+#define FNAME_MAX_LEN 60
+#define SAVE_FILE "/home/starcam/Desktop/TIMSC/commands.txt"
 #define DEFAULT_ENC_TESTING 2850
 FILE * fptr = NULL;
 
@@ -38,7 +39,7 @@ struct socket_data send_info = {.ipAddr = IP_ADDR, .port = COMMAND_PORT};
 int have_received_enc_value = 0; // flag to start doing actual stuff
 float focus_pos[30] = {0}; // don't do anything until we receive the first 30 focus position packets so we can assume thats a good estimate of starting focus pos.
 double gainvals[4] = {1,2,3,4};
-double exposureValsMs[3] = {0.05 * 1000.0, 0.1 * 1000.0, 0.2 * 1000.0};
+double exposureValsMs[3] = {(0.05 * 1000.0), (0.1 * 1000.0), (0.2 * 1000.0)};
 float enc_position_deltas[7] = {-30,-20,-10,0,10,20,30}; // move to -30 initially then step +10
 int focus_mode[2] = {0,1};
 float focus_mode_pos_testing = 2973;
@@ -196,16 +197,16 @@ int generate_AF_packet(struct star_cam_capture * packet, FILE * fptr, int* flag_
     packet->update_focusMode = 1;
     packet->focusMode = 1;
 
-    float defaultPos = focus_pos[29];
+    int defaultPos = (int)focus_pos[29];
     packet->startPos = defaultPos - 500;
     packet->update_startPos = 1;
-    packet->endPos = defaultPos + 480;
+    packet->endPos = defaultPos + 400;
     packet->update_endPos = 1;
     packet->focusStep = 5;
     packet->update_focusStep = 1;
     *flag_to_af = 0;
     fprintf(fptr, "############ AUTOFOCUSING ########### %.4lf\n", time_tag());
-    return 130; // sleep for 60 seconds after sending the AF packet to make sure it completes its task
+    return 130; // sleep after sending the AF packet to make sure it completes its task
 }
 
 int generate_command_packet(struct star_cam_capture * packet, FILE * fptr, int* flag_to_af) { // eventually generate, right now lets dump it in a file
@@ -265,7 +266,7 @@ int generate_command_packet(struct star_cam_capture * packet, FILE * fptr, int* 
     {
         *flag_to_af = 1; // we will autofocus on the next loop
     }
-    return 3;
+    return 150;
 }
 
 // steal a send command packet thread from MCP
@@ -368,8 +369,8 @@ void *star_camera_command_thread(void *args) {
 }
 
 int main(void) {
-    char filename[20];
-    snprintf(filename, 20, "%s", SAVE_FILE);
+    char filename[FNAME_MAX_LEN];
+    snprintf(filename, FNAME_MAX_LEN, "%s", SAVE_FILE);
     fptr = fopen(filename, "w");
     pthread_t recv_thread, send_thread;
     pthread_create(&send_thread, NULL, star_camera_command_thread, (void *) &send_info);
