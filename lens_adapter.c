@@ -316,9 +316,16 @@ int initLensAdapter(char * path) {
         printf("Failed to learn current focus range.\n");
         return -1;
     }
-
     // OK to usleep here, because we DO expect this move to take an appreciable
     // amount of time, and we do this one time on init.
+    usleep((int)1e6); // la approx time
+
+    // Yes, this is la again. On a cold boot, for some reason, la always
+    // returns 0 for the lower limit. It gets it right on the second time.
+    if (runCommand("la\r", file_descriptor, birger_output) == -1) {
+        printf("Failed to learn current focus range.\n");
+        return -1;
+    }
     usleep((int)1e6); // la approx time
 
     if (verbose) {
