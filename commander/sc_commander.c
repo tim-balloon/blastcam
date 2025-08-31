@@ -186,6 +186,7 @@ int generate_pre_AF_packet(struct star_cam_capture * packet, FILE * fptr, int* f
     packet->exposureTime = 25.0;
     *flag_to_af = 2;
     fprintf(fptr, "PRE AUTOFOCUS CHANGES, %.4lf, %.4lf, %.4lf\n", packet->gainFact, packet->exposureTime, time_tag());
+    fflush(fptr);
     return 1;
 }
 
@@ -206,6 +207,7 @@ int generate_AF_packet(struct star_cam_capture * packet, FILE * fptr, int* flag_
     packet->update_focusStep = 1;
     *flag_to_af = 0;
     fprintf(fptr, "############ AUTOFOCUSING ########### %.4lf\n", time_tag());
+    fflush(fptr);
     return 130; // sleep after sending the AF packet to make sure it completes its task
 }
 
@@ -216,6 +218,7 @@ int generate_command_packet(struct star_cam_capture * packet, FILE * fptr, int* 
     if (first_time == 1)
     {
         fprintf(fptr, "#ENC POSITION, GAIN, EXPOSURE, CLOCKTIME\n");
+        fflush(fptr);
         first_time = 0;
     }
     // generate the packet here
@@ -234,7 +237,7 @@ int generate_command_packet(struct star_cam_capture * packet, FILE * fptr, int* 
         packet->update_exposureTime = 1;
         packet->exposureTime = exposureValsMs[k];
         fprintf(fptr, "%.4f, %.4lf, %.4lf, %.4lf\n", packet->focusPos, packet->gainFact, packet->exposureTime, time_tag());
-
+        fflush(fptr);
     }
     // this is the post AF packet that doesn't change the focus pos
     else
@@ -244,6 +247,7 @@ int generate_command_packet(struct star_cam_capture * packet, FILE * fptr, int* 
         packet->update_exposureTime = 1;
         packet->exposureTime = exposureValsMs[k];
         fprintf(fptr, "AF LOCATION, %.4lf, %.4lf, %.4lf\n", packet->gainFact, packet->exposureTime, time_tag());
+        fflush(fptr);
     }
     // stupid way for me to iterate through the parameter space
     k++;
@@ -261,6 +265,7 @@ int generate_command_packet(struct star_cam_capture * packet, FILE * fptr, int* 
     {
         i = 0;
         fprintf(fptr, "######### END OF CYCLE ##########\n");
+        fflush(fptr);
     }
     if (i == 7 && j == 0 && k == 0) // has just moved to the AF setting.
     {
