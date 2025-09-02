@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <sofa.h>
 
 #include "camera.h"
@@ -28,6 +29,7 @@ void part(double A[], int p, int r, double X[], double Y[]);
 
 #include <ids_peak_comfort_c/ids_peak_comfort_c.h>
 peak_camera_handle hCam = PEAK_INVALID_HANDLE;
+peak_message_queue_handle hMessageQueue = PEAK_INVALID_HANDLE;
 
 // We include a default metadata struct here to help with initialization
 // elsewhere. This could also be handled in a template FITS with using the
@@ -46,7 +48,7 @@ struct fits_metadata_t default_metadata = {
     .utcsec = 0,
     .utcusec = 0,
     .filter = "B+W 091 (630nm)",
-    .ccdtemp = 0.0,
+    .ccdtemp = -273.15,
     .focus = 0,
     .focusMin = 0,
     .focusMax = 0,
@@ -1048,6 +1050,152 @@ int setBlackLevelOffset(double blackLevelOffset)
 }
 
 
+/**
+ * @brief Initializes the structs required to listen to messages from the camera
+ * 
+ * @return int -1 if failed, 0 otherwise
+ */
+int initMessageQueue(void)
+{
+    // https://en.ids-imaging.com/manuals/ids-peak/ids-peak-comfortsdk-documentation/2.16.0/en/group__messagequeue.html
+    peak_status status = PEAK_STATUS_SUCCESS;
+
+    status = peak_MessageQueue_Create(&hMessageQueue);
+    if (!checkForSuccess(status)) {
+        fprintf(stderr, "initMessageQueue: Failed to create message queue.\n");
+        return -1;
+    }
+
+    // If more messages are required later, enable them here
+    status = peak_MessageQueue_EnableMessage(hMessageQueue, hCam,
+        PEAK_MESSAGE_TYPE_REMOTE_DEVICE_TEMPERATURE);
+    if (!checkForSuccess(status)) 
+    {
+        fprintf(stderr, "initMessageQueue: Failed to enable message queue.\n");
+        return -1;
+    }
+    
+    status = peak_MessageQueue_Start(hMessageQueue);
+    if (!checkForSuccess(status)) 
+    {
+        fprintf(stderr, "initMessageQueue: Failed to start message queue.\n");
+        return -1;
+    }
+
+    if (verbose) {
+        printf("initMessageQueue: message queue initialized successfully.\n");
+    }
+
+    return 0;
+}
+
+
+/**
+ * @brief Extracts and passes sensor temp to output struct for FITS
+ * 
+ * @param hMessage 
+ * @return int -1 if failed, 0 otherwise
+ */
+int handleTemperatureMessage(peak_message_handle hMessage)
+{
+    peak_message_data_remote_device_temperature remoteDeviceTemperature;
+    peak_status status = peak_Message_Data_RemoteDeviceTemperature_Get(hMessage, &remoteDeviceTemperature);
+    if (!checkForSuccess(status))
+    {
+        fprintf(stderr, "handleTemperatureMessage: Failed to get data for "
+            "temperature message.\n");
+        return -1;
+    } else {
+        default_metadata.ccdtemp = (float)remoteDeviceTemperature.temperature;
+        if (verbose) {
+            double fahrenheit = remoteDeviceTemperature.temperature * 9.0 / 5.0 + 32.0;
+            printf("handleTemperatureMessage: DeviceTimestamp: %" PRIu64 ", Temperature: %.2f degC , %.2f degF\n",
+                remoteDeviceTemperature.timestamp_ns, remoteDeviceTemperature.temperature, fahrenheit);
+        }
+    }
+    return 0;
+}
+
+
+/**
+ * @brief Waits for messages on the message queue and dispatches to functions to
+ * deal with them.
+ * 
+ * @return int -1 if failed, 0 otherwise
+ */
+int pollMessageQueue(void)
+{
+    // https://en.ids-imaging.com/manuals/ids-peak/ids-peak-comfortsdk-documentation/2.16.0/en/group__messagequeue.html
+    peak_message_handle hMessage;
+    uint32_t timeout_ms = (int)1e3;
+    // We could do PEAK_INFINITE, but then on shutdown this thread would hang
+    // unit temp changes by >0.5 degC and a message is emitted.
+
+    peak_status status = peak_MessageQueue_WaitForMessage(hMessageQueue, timeout_ms, &hMessage);
+    if (PEAK_SUCCESS(status)) { // also handles #PEAK_STATUS_WARNING_OVERFLOW, as it's only a warning
+        // do something with message, e.g.
+        peak_message_info message_info;
+        if (PEAK_STATUS_SUCCESS == peak_Message_GetInfo(hMessage, &message_info))
+        {
+            if (PEAK_MESSAGE_DATA_TYPE_REMOTE_DEVICE_TEMPERATURE == message_info.dataType) {
+                handleTemperatureMessage(hMessage);
+            } else {
+                // Shouldn't happen, we have only subscribed to temperature
+                if (verbose) {
+                    printf("pollMessageQueue: New Message: %d\n", message_info.type);
+                }
+            }
+        }
+        // don't forget to release the message!
+        peak_Message_Release(hMessage);
+    } else if (PEAK_STATUS_ABORTED == status) {
+        fprintf(stderr, "pollMessageQueue: Failed during waiting for message;"
+            "queue was stopped while waiting.\n");
+        return -1;
+    } else if (PEAK_STATUS_TIMEOUT == status) {
+        // Temperature changes slowly, so timeouts are nominal.
+        // if (verbose) {
+        //     printf("pollMessageQueue: no message within %d ms.\n", timeout_ms);
+        // }
+        return 0;
+    } else {
+        checkForSuccess(status); // just for error code reporting
+        fprintf(stderr, "pollMessageQueue: Failed to wait for message.\n");
+        return -1;
+    }
+
+    if (PEAK_STATUS_WARNING_OVERFLOW == status) {
+        if (verbose) {
+            printf("pollMessageQueue: queue overflowed and messages were "
+                "dropped.\n");
+        }
+    }
+    return 0;
+}
+
+
+/**
+ * @brief Tears down structs for the camera message queue
+ * 
+ * @return int -1 if failed, 0 otherwise
+ */
+int closeMessageQueue(void)
+{
+    peak_status status = peak_MessageQueue_Stop(hMessageQueue);
+    if (!checkForSuccess(status)) {
+        fprintf(stderr, "closeMessageQueue: failed to stop message queue.\n");
+        return -1;
+    }
+
+    status = peak_MessageQueue_Destroy(hMessageQueue);
+    if (!checkForSuccess(status)) {
+        fprintf(stderr, "closeMessageQueue: failed to destroy message queue.\n");
+        return -1;
+    }
+    return 0;
+}
+
+
 int initCamera(void)
 {
     // load the camera parameters
@@ -1500,8 +1648,6 @@ int imageTransfer(uint16_t* pUnpackedImage)
     // time of observation start
     default_metadata.utcsec = (uint64_t)metadataTv.tv_sec;
     default_metadata.utcusec = (uint64_t)metadataTv.tv_usec;
-
-    // TODO(evanmayer): ccdtemp, not sure if there's a way to do this in peak API
 
     // Focus and aperture commands update this member after the command is
     // issued. So it should be current, and we don't want to ask the lens again.

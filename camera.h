@@ -78,9 +78,11 @@ extern struct camera_params all_camera_params;
 
 int setCameraParams();
 void setSaveImage();
+int initMessageQueue(void);
+int pollMessageQueue(void);
+int closeMessageQueue(void);
 int loadCamera();
 int initCamera();
-// int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm* tm_info, char* output_buffer);
 int getNumberOfCameras(int* pNumCams);
 int setExposureTime(double exposureTimeMs);
 
