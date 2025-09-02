@@ -34,6 +34,8 @@ struct fits_metadata_t {
     char filter[20]; // FILTER: filter name
     float ccdtemp; // CCDTEMP: camera temp (C)
     int16_t focus; // FOCUS: focus position (encoder units)
+    int16_t focusMin; // FOCUSMIN: min reported focus position (encoder units)
+    int16_t focusMax; // FOCUSMAX: max reported focus position (encoder units)
     int16_t aperture; // APERTURE: aperture position (10x fstop)
     float exptime; // EXPTIME: total exposure time (s)
     char bunit[4]; // BUNIT: physical unit of array values (ADU)

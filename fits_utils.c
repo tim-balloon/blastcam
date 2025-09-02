@@ -69,6 +69,10 @@ int writeMetadata(fitsfile* fptr, struct fits_metadata_t* pMetadata)
         "camera temp (C)", &status);
     fits_update_key(fptr, TSHORT, "FOCUS", &(pMetadata->focus),
         "focus position (encoder units)", &status);
+    fits_update_key(fptr, TSHORT, "FOCUSMIN", &(pMetadata->focusMin),
+        "min reported focus position (encoder units)", &status);
+    fits_update_key(fptr, TSHORT, "FOCUSMAX", &(pMetadata->focusMax),
+        "max reported focus position (encoder units)", &status);
     fits_update_key(fptr, TSHORT, "APERTURE", &(pMetadata->aperture),
         "aperture position (10x fstop)", &status);
     fits_update_key(fptr, TFLOAT, "EXPTIME", &(pMetadata->exptime),

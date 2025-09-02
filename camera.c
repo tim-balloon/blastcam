@@ -48,6 +48,8 @@ struct fits_metadata_t default_metadata = {
     .filter = "B+W 091 (630nm)",
     .ccdtemp = 0.0,
     .focus = 0,
+    .focusMin = 0,
+    .focusMax = 0,
     .aperture = 14,
     .exptime = 0.1,
     .bunit = "ADU",
@@ -1504,6 +1506,8 @@ int imageTransfer(uint16_t* pUnpackedImage)
     // Focus and aperture commands update this member after the command is
     // issued. So it should be current, and we don't want to ask the lens again.
     default_metadata.focus = (int16_t)all_camera_params.focus_position;
+    default_metadata.focusMin = (int16_t)all_camera_params.min_focus_pos;
+    default_metadata.focusMax = (int16_t)all_camera_params.max_focus_pos;
     default_metadata.aperture = (int16_t)all_camera_params.current_aperture;
 
     status = peak_Frame_Release(hCam, hFrame);
