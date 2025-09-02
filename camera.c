@@ -48,6 +48,8 @@ struct fits_metadata_t default_metadata = {
     .filter = "B+W 091 (630nm)",
     .ccdtemp = 0.0,
     .focus = 0,
+    .focusMin = 0,
+    .focusMax = 0,
     .aperture = 14,
     .exptime = 0.1,
     .bunit = "ADU",
@@ -775,6 +777,7 @@ int setMinPixelClock(void)
                         printf("\t- %f\n", pixelClockList[i]);
                     }
                 }
+                free(pixelClockList);
             }
         }
     }  else {
@@ -1379,7 +1382,7 @@ int saveFITStoDisk(uint16_t* pUnpackedImage)
     // Create the output filename
     strftime(FITSfilename, sizeof(FITSfilename),
         "/home/starcam/Desktop/TIMSC/img/"
-        "saved_image_%Y-%m-%d_%H-%M-%S.fits", tm_info);
+        "saved_image_%Y-%m-%d_%H-%M-%S.fits.fz", tm_info);
 
     snprintf(default_metadata.filename, sizeof(default_metadata.filename),
         "%s", FITSfilename);
@@ -1431,6 +1434,8 @@ int imageTransfer(uint16_t* pUnpackedImage)
     peak_frame_handle hFrame = PEAK_INVALID_HANDLE;
     double actualExpTimeMs = 1000.0; // if get fails, we'll wait 3s
     getExposureTime(&actualExpTimeMs);
+    // Guard against truncation to 0. 0 is an invalid timeout.
+    actualExpTimeMs = fmax(1.0, actualExpTimeMs);
     uint32_t three_frame_times_timeout_ms = (uint32_t)(3.0 * actualExpTimeMs + 0.5);
 
     if (verbose) {
@@ -1501,6 +1506,8 @@ int imageTransfer(uint16_t* pUnpackedImage)
     // Focus and aperture commands update this member after the command is
     // issued. So it should be current, and we don't want to ask the lens again.
     default_metadata.focus = (int16_t)all_camera_params.focus_position;
+    default_metadata.focusMin = (int16_t)all_camera_params.min_focus_pos;
+    default_metadata.focusMax = (int16_t)all_camera_params.max_focus_pos;
     default_metadata.aperture = (int16_t)all_camera_params.current_aperture;
 
     status = peak_Frame_Release(hCam, hFrame);
@@ -1680,6 +1687,10 @@ int measureSharpness(double* pSharpness)
     status = peak_Frame_Buffer_Get(hFrame, &buffer);
     if(!checkForSuccess(status)) {
         fprintf(stderr, "ERROR: Failed to get buffer from frame.\n");
+        status = peak_Frame_Release(hCam, hFrame);
+        if(!checkForSuccess(status)) {
+            fprintf(stderr, "ERROR: Frame_Release failed.\n");
+        }
         return -1;
     }
     unpack_mono12((uint16_t *)buffer.memoryAddress, unpacked_image,
@@ -2436,20 +2447,18 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
     if (beginAutoFocus() < 1) {
         printf("Error beginning auto-focusing process. Skipping to taking "
                 "observing images...\n");
-        // return to default focus position
-        if (defaultFocusPosition() < 1) {
-            printf("Error moving to default focus position.\n");
-            all_camera_params->focus_mode = 0;
-            return -1;
-        }
 
         // abort auto-focusing process
         all_camera_params->focus_mode = 0;
     }
 
-    // Loop until all focus positions covered
-    bool hasGoneForward = 0;
-    bool atFarEnd = 0;
+    // Loop until all focus positions covered.
+    // AF proceeds backward from infinity downward...
+    // ECM found that lens reported reaching a stop at positions
+    // far from the 'la' learned inf stop...some kind of stickiness?
+    // We avoid this by stepping from high to low encoder positions.
+    bool hasGoneBackward = 0;
+    bool atNearEnd = 0;
 
     // Set binning to speed up sharpness measurement
     // NOTE: any return statements between here and the end of the focusing loop
@@ -2461,13 +2470,11 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         return -1;
     }
 
-    int curFocusPos = all_camera_params->start_focus_pos;
-
     while (remainingFocusPos > 0) {
         remainingFocusPos -= 1;
-        atFarEnd = ((curFocusPos >= all_camera_params->end_focus_pos) || 
-            (curFocusPos >= all_camera_params->max_focus_pos - 25));
-        if (atFarEnd && hasGoneForward) {
+        atNearEnd = ((all_camera_params->focus_position < (all_camera_params->start_focus_pos + all_camera_params->focus_step)) || 
+            (all_camera_params->focus_position <= all_camera_params->min_focus_pos + 25));
+        if (atNearEnd && hasGoneBackward) {
             // Break out of AF
             all_camera_params->focus_mode = 0;
             printf("Quitting autofocus after fulfilling end conditions...\n");
@@ -2527,17 +2534,22 @@ int doContrastDetectAutoFocus(struct camera_params* all_camera_params, struct tm
         fflush(af_file);
 
         // Move to next position
-        curFocusPos += all_camera_params->focus_step;
+        if (verbose) {
+            printf("Focus range min: %d, current: %d, max: %d\n",
+                all_camera_params->start_focus_pos,
+                all_camera_params->focus_position,
+                all_camera_params->end_focus_pos);
+        }
         int focusStep = min(
-            all_camera_params->focus_step,
-            all_camera_params->end_focus_pos -
-            all_camera_params->focus_position);
+            -all_camera_params->focus_step,
+            all_camera_params->focus_position -
+            all_camera_params->start_focus_pos);
         sprintf(focusStrCmd, "mf %i\r", focusStep);
         if (!cancelling_auto_focus) {
             shiftFocus(focusStrCmd);
         }
         numFocusPos++;
-        hasGoneForward = 1;
+        hasGoneBackward = 1;
 
         // for kst display?
         memcpy(output_buffer, unpacked_image, CAMERA_NUM_PX * sizeof(uint16_t));

@@ -93,7 +93,10 @@ struct camera_params all_camera_params = {
     .flux = 0.0,                 // first auto-focus max flux found will set this
 };
 
-char * birger_output, * buffer;
+// allocate space for returning values after running Birger commands
+char birger_output[100];
+char buffer[100];
+
 int file_descriptor, default_focus;
 // global variables for solution to quadratic regression for auto-focusing
 double a, b, c;
@@ -305,13 +308,6 @@ int initLensAdapter(char * path) {
         return -1;
     }
 
-    // allocate space for returning values after running Birger commands
-    birger_output = malloc(100);
-    if (birger_output == NULL) {
-        fprintf(stderr, "Error allocating output for Birger commands: %s.\n", 
-                strerror(errno));
-        return -1;
-    }
 
     if (verbose) {
         printf("Learning focus range\n");
@@ -320,10 +316,17 @@ int initLensAdapter(char * path) {
         printf("Failed to learn current focus range.\n");
         return -1;
     }
-
     // OK to usleep here, because we DO expect this move to take an appreciable
     // amount of time, and we do this one time on init.
-    usleep((int)1e6);
+    usleep((int)1e6); // la approx time
+
+    // Yes, this is la again. On a cold boot, for some reason, la always
+    // returns 0 for the lower limit. It gets it right on the second time.
+    if (runCommand("la\r", file_descriptor, birger_output) == -1) {
+        printf("Failed to learn current focus range.\n");
+        return -1;
+    }
+    usleep((int)1e6); // la approx time
 
     if (verbose) {
         printf("Moving to infinity\n");
@@ -386,8 +389,6 @@ int initLensAdapter(char * path) {
         return -1;
     } 
 
-    // free up birger_output variable
-    free(birger_output);
     return file_descriptor;
 }
 
@@ -398,6 +399,14 @@ int initLensAdapter(char * path) {
 */
 int beginAutoFocus() {
     char focus_str_cmd[10];
+
+    // Lens gets stuck advancing toward inf near inf end??? slam it to inf
+    // and work backward???
+    if (runCommand("mi\r", file_descriptor, birger_output) == -1) {
+        printf("Failed to set focus to infinity.\n");
+        return -1;
+    }
+    usleep((int)1e6);
 
     // Always start AF runs by checking current focuser pos, to get right
     // delta to begin AF run.
@@ -410,7 +419,7 @@ int beginAutoFocus() {
     printf("(*) Auto-focusing parameters: start = %d, stop = %d, step = %d.\n", 
            all_camera_params.start_focus_pos, all_camera_params.end_focus_pos,
            all_camera_params.focus_step);
-    sprintf(focus_str_cmd, "mf %i\r", all_camera_params.start_focus_pos - 
+    sprintf(focus_str_cmd, "mf %i\r", all_camera_params.end_focus_pos - 
                                       all_camera_params.focus_position);
     if (runCommand(focus_str_cmd, file_descriptor, birger_output) == -1) {
         printf("Failed to move focus to beginning of auto-focusing range.\n");
@@ -434,6 +443,13 @@ int beginAutoFocus() {
 */
 int defaultFocusPosition() {
     char focus_str_cmd[10];
+
+    // HACK: slam inf first, then proceed to default position from above
+    if (runCommand("mi\r", file_descriptor, birger_output) == -1) {
+        printf("Failed move focus to inf.\n");
+        return -1;
+    }
+    usleep((int)1e6);
 
     // Always start by checking current focuser pos, to get correct delta.
     if (runCommand("fp\r", file_descriptor, birger_output) == -1) {
@@ -720,13 +736,6 @@ int runCommand(const char * command, int file, char * return_str) {
         return -1;
     }
 
-    buffer = calloc(100, sizeof(char));
-    if (buffer == NULL) {
-        fprintf(stderr, "Error allocating buffer in runCommand(): %s.\n", 
-                strerror(errno));
-        return -1;
-    }
-
     buffer[0] = '\0';
     status = read(file, buffer, 99);
     if (status <= 0) {
@@ -743,13 +752,7 @@ int runCommand(const char * command, int file, char * return_str) {
     }
     
     // copy buffer over to return_str for printing to terminal
-    return_str = calloc(100, sizeof(char));
-    if (return_str == NULL) {
-        fprintf(stderr, "Error allocating return string for printing to "
-                        "terminal in runCommand(): %s.\n", strerror(errno));
-        return -1;
-    }
-    return_str[99] = '\0';
+    memset(return_str, '\0', 100);
     strcpy(return_str, buffer);
 
     if (strcmp(command, "fp\r") == 0) {
@@ -768,7 +771,7 @@ int runCommand(const char * command, int file, char * return_str) {
                &all_camera_params.min_focus_pos, 
                &all_camera_params.max_focus_pos, 
                &all_camera_params.focus_position) < 0) {
-            fprintf(stderr, "fp read failed! %s\n", strerror(errno));
+            fprintf(stderr, "fp read failed reading %s! %s\n", return_str, strerror(errno));
         }
         if (verbose) {
             printf("in camera params, min focus pos is: %i\n", 
@@ -805,7 +808,5 @@ int runCommand(const char * command, int file, char * return_str) {
         printf("%s\n", return_str);
     }
 
-    free(buffer);
-    free(return_str);
     return 1;
 }
