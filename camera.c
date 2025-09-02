@@ -1382,7 +1382,7 @@ int saveFITStoDisk(uint16_t* pUnpackedImage)
     // Create the output filename
     strftime(FITSfilename, sizeof(FITSfilename),
         "/home/starcam/Desktop/TIMSC/img/"
-        "saved_image_%Y-%m-%d_%H-%M-%S.fits", tm_info);
+        "saved_image_%Y-%m-%d_%H-%M-%S.fits.fz", tm_info);
 
     snprintf(default_metadata.filename, sizeof(default_metadata.filename),
         "%s", FITSfilename);
