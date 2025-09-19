@@ -117,7 +117,9 @@ uint16_t camera_raw[CAMERA_WIDTH * CAMERA_HEIGHT] = {0};
 // if 0, then camera is not closing, so keep solving astrometry
 int shutting_down = 0;
 // return values for terminating the threads
-int astro_thread_ret, client_thread_ret;
+int astro_thread_ret;
+int message_thread_ret;
+int client_thread_ret;
 
 /* Helper function to display the Star Camera terminal header.
 ** Input: None.
@@ -249,6 +251,41 @@ void * updateAstrometry() {
     astro_thread_ret = 1;
     pthread_exit(&astro_thread_ret);
 }
+
+
+/**
+ * @brief Function to handle PEAK api message queue.
+ * @detail Listening to the camera message queue is threaded because the
+ * listener blocks until a message is on the queue. Some information
+ * (temperature) is only available as messages.
+ */
+void * updateMessages() {
+    if (initMessageQueue() < 0) {
+        fprintf(stderr, "updateMessages: failed to init message queue. Thread "
+            "exiting.\n");
+        message_thread_ret = -1;
+        pthread_exit(&message_thread_ret);
+    }
+
+    while (!shutting_down) {
+        if (pollMessageQueue() < 0) {
+            if (verbose) {
+                printf("Failed to poll message queue.\n");
+            }
+        }
+        // No need to sleep in this loop, since waiting for message queue
+        // timeout handles cadence.
+    }
+
+    message_thread_ret = 0;
+    if (closeMessageQueue() < 0) {
+        fprintf(stderr, "updateMessages: failed to close message queue. Thread "
+            "exiting.\n");
+        message_thread_ret = -1;
+    }
+    pthread_exit(&message_thread_ret);
+}
+
 
 /* Function for accepting newly connected clients and sending telemetry and 
 ** receiving their commands.
@@ -583,8 +620,10 @@ int main(int argc, char * argv[]) {
     int client_addr_len;             // length of client addresses
     pthread_t client_thread_id;      // thread ID for new clients        
     pthread_t astro_thread_id;       // thread ID for Astrometry thread
+    pthread_t message_thread_id;     // thread ID for camera message thread
     struct args * client_args;       // arguments to pass to clients
     int * astro_ptr = NULL;          // ptr for returning from Astrometry thread
+    int * message_ptr = NULL;          // ptr for returning from message thread
     int * client_ptr = NULL;         // ptr for returning from client thread
     int any_clients = 0;             // if a client every connected during run
     int ret;                         // return status of main()
@@ -785,6 +824,13 @@ int main(int argc, char * argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // create a thread separate from all client thread(s) to poll camera
+    // messages
+    if (pthread_create(&message_thread_id, NULL, updateMessages, NULL) != 0) {
+        fprintf(stderr, "Error creating message thread: %s.\n", 
+                strerror(errno));
+    }
+
     // Create the listening threads for MCP
     pthread_create(&listen_fc1, NULL, listen_thread, (void *) &fc1Socket_listen);
     pthread_create(&listen_fc2, NULL, listen_thread, (void *) &fc2Socket_listen);
@@ -862,6 +908,7 @@ int main(int argc, char * argv[]) {
 
     // join threads once the Astrometry thread has closed and terminated
     pthread_join(astro_thread_id, (void **) &(astro_ptr));
+    pthread_join(message_thread_id, (void **) &(message_ptr));
     if (any_clients) {
         pthread_join(client_thread_id, (void **) &(client_ptr));
         free(client_args);
