@@ -185,8 +185,11 @@ int generate_pre_AF_packet(struct star_cam_capture * packet, FILE * fptr, int* f
     // nominal pixel values equivalent to a 100ms exposure
     packet->exposureTime = 25.0;
     *flag_to_af = 2;
-    fprintf(fptr, "PRE AUTOFOCUS CHANGES, %.4lf, %.4lf, %.4lf\n", packet->gainFact, packet->exposureTime, time_tag());
-    fflush(fptr);
+    int ret = fprintf(fptr, "PRE AUTOFOCUS CHANGES, %.4lf, %.4lf, %.4lf\n", packet->gainFact, packet->exposureTime, time_tag());
+    if(ret < 1) {
+    	perror("|||||||||||||||||||||||||||||||||||||||||| file print failed: ");
+    }
+    // fflush(fptr);
     return 1;
 }
 
@@ -206,8 +209,11 @@ int generate_AF_packet(struct star_cam_capture * packet, FILE * fptr, int* flag_
     packet->focusStep = 5;
     packet->update_focusStep = 1;
     *flag_to_af = 0;
-    fprintf(fptr, "############ AUTOFOCUSING ########### %.4lf\n", time_tag());
-    fflush(fptr);
+    int ret = fprintf(fptr, "############ AUTOFOCUSING ########### %.4lf\n", time_tag());
+    if(ret < 1) {
+        perror("|||||||||||||||||||||||||||||||||||||||||| file print failed: ");
+    }
+    // fflush(fptr);
     return 130; // sleep after sending the AF packet to make sure it completes its task
 }
 
@@ -217,8 +223,13 @@ int generate_command_packet(struct star_cam_capture * packet, FILE * fptr, int* 
     static int i = 0, j = 0, k = 0; // fake ass loop variables
     if (first_time == 1)
     {
-        fprintf(fptr, "#ENC POSITION, GAIN, EXPOSURE, CLOCKTIME\n");
-        fflush(fptr);
+	printf("I am trying to write my header\n");
+        int ret = fprintf(fptr, "#ENC POSITION, GAIN, EXPOSURE, CLOCKTIME\n");
+	printf("%d\n", ret);
+        if(ret < 1) {
+        	perror("|||||||||||||||||||||||||||||||||||||||||| file print failed: ");
+        }
+        // fflush(fptr);
         first_time = 0;
     }
     // generate the packet here
@@ -236,8 +247,11 @@ int generate_command_packet(struct star_cam_capture * packet, FILE * fptr, int* 
         packet->gainFact = gainvals[j];
         packet->update_exposureTime = 1;
         packet->exposureTime = exposureValsMs[k];
-        fprintf(fptr, "%.4f, %.4lf, %.4lf, %.4lf\n", packet->focusPos, packet->gainFact, packet->exposureTime, time_tag());
-        fflush(fptr);
+        int ret = fprintf(fptr, "%.4f, %.4lf, %.4lf, %.4lf\n", packet->focusPos, packet->gainFact, packet->exposureTime, time_tag());
+        if(ret < 1) {
+        	perror("|||||||||||||||||||||||||||||||||||||||||| file print failed: ");
+        }
+	// fflush(fptr);
     }
     // this is the post AF packet that doesn't change the focus pos
     else
@@ -246,8 +260,11 @@ int generate_command_packet(struct star_cam_capture * packet, FILE * fptr, int* 
         packet->gainFact = gainvals[j];
         packet->update_exposureTime = 1;
         packet->exposureTime = exposureValsMs[k];
-        fprintf(fptr, "AF LOCATION, %.4lf, %.4lf, %.4lf\n", packet->gainFact, packet->exposureTime, time_tag());
-        fflush(fptr);
+        int ret = fprintf(fptr, "AF LOCATION, %.4lf, %.4lf, %.4lf\n", packet->gainFact, packet->exposureTime, time_tag());
+        if(ret < 1) {
+        	perror("|||||||||||||||||||||||||||||||||||||||||| file print failed: ");
+    	}
+	// fflush(fptr);
     }
     // stupid way for me to iterate through the parameter space
     k++;
@@ -264,8 +281,11 @@ int generate_command_packet(struct star_cam_capture * packet, FILE * fptr, int* 
     if (i == 8)
     {
         i = 0;
-        fprintf(fptr, "######### END OF CYCLE ##########\n");
-        fflush(fptr);
+        int ret = fprintf(fptr, "######### END OF CYCLE ##########\n");
+        if(ret < 1) {
+        	perror("|||||||||||||||||||||||||||||||||||||||||| file print failed: ");
+    	}
+	// fflush(fptr);
     }
     if (i == 7 && j == 0 && k == 0) // has just moved to the AF setting.
     {
@@ -342,6 +362,7 @@ void *star_camera_command_thread(void *args) {
         // check to see if a command packet has been packed
         if (have_received_enc_value)
         {
+	    fptr = fopen(SAVE_FILE, "a");
             if (AF_flag == 0)
             {
                 sleep_interval_sec = generate_command_packet(&command_packet, fptr, &AF_flag);
@@ -350,7 +371,7 @@ void *star_camera_command_thread(void *args) {
             } else if (AF_flag == 2) {
                 sleep_interval_sec = generate_AF_packet(&command_packet, fptr, &AF_flag);
             }
-
+	    fclose(fptr);
             if (1) { // no need to check now, packing is done here
                 if (!strcmp(socket_target->ipAddr, ipAddr)) {
                     packet_status = 0;
@@ -377,6 +398,8 @@ int main(void) {
     char filename[FNAME_MAX_LEN];
     snprintf(filename, FNAME_MAX_LEN, "%s", SAVE_FILE);
     fptr = fopen(filename, "w");
+    fclose(fptr);
+    printf("%s\n",filename);
     pthread_t recv_thread, send_thread;
     pthread_create(&send_thread, NULL, star_camera_command_thread, (void *) &send_info);
     pthread_create(&recv_thread, NULL, parameter_receive_thread, (void *) &recv_info);
